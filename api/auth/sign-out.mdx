@@ -1,0 +1,233 @@
+---
+title: Sign out
+description: Revoke user authentication and invalidate tokens
+---
+
+## Endpoint
+
+```
+POST /api/json/sign-out
+```
+
+Sign out the current user by revoking their authentication token. This invalidates the JWT token and prevents it from being used for future requests.
+
+<Warning>
+After signing out, the token will no longer be valid for any API requests. Users must sign in again to obtain a new token.
+</Warning>
+
+## Request
+
+### Headers
+
+<ParamField header="Authorization" type="string" required>
+  Bearer token for the authenticated user
+  
+  ```
+  Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+  ```
+</ParamField>
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/vnd.api+json`
+</ParamField>
+
+### Body
+
+The request body should be empty or contain an empty data object:
+
+```json
+{
+  "data": {}
+}
+```
+
+## Response
+
+### Success Response (204 No Content)
+
+A successful sign-out returns `204 No Content` with an empty response body. This indicates the token has been successfully revoked.
+
+### Error Responses
+
+<Accordion title="401 Unauthorized - Invalid or Missing Token">
+  ```json
+  {
+    "errors": [
+      {
+        "status": "401",
+        "title": "Unauthorized",
+        "detail": "Invalid or missing authentication token"
+      }
+    ]
+  }
+  ```
+  
+  This error is returned when:
+  - No Authorization header is provided
+  - The token is invalid or malformed
+  - The token has already been revoked
+  - The token has expired
+</Accordion>
+
+## Examples
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/api/json/sign-out \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{"data": {}}'
+```
+
+```javascript JavaScript
+const token = localStorage.getItem('authToken');
+
+const response = await fetch('https://api.example.com/api/json/sign-out', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/vnd.api+json',
+  },
+  body: JSON.stringify({ data: {} })
+});
+
+if (response.status === 204) {
+  // Sign-out successful, remove token from storage
+  localStorage.removeItem('authToken');
+  console.log('Signed out successfully');
+  
+  // Redirect to login page
+  window.location.href = '/login';
+} else {
+  const error = await response.json();
+  console.error('Sign-out failed:', error.errors[0].detail);
+}
+```
+
+```python Python
+import requests
+
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+response = requests.post(
+    'https://api.example.com/api/json/sign-out',
+    headers={
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/vnd.api+json'
+    },
+    json={'data': {}}
+)
+
+if response.status_code == 204:
+    print('Signed out successfully')
+    # Clear stored token
+else:
+    error = response.json()
+    print(f"Error: {error['errors'][0]['detail']}")
+```
+</CodeGroup>
+
+## Sign Out Flow
+
+<Steps>
+  <Step title="Client sends sign-out request">
+    The client sends a POST request to `/api/json/sign-out` with the current authentication token in the Authorization header.
+  </Step>
+  
+  <Step title="Token validation">
+    The API validates the token to ensure it exists and hasn't already been revoked.
+  </Step>
+  
+  <Step title="Token revocation">
+    The token is marked as revoked in the database, preventing any future use.
+  </Step>
+  
+  <Step title="Success response">
+    A `204 No Content` response is returned to confirm the sign-out was successful.
+  </Step>
+  
+  <Step title="Client cleanup">
+    The client removes the token from local storage and redirects the user to the login page.
+  </Step>
+</Steps>
+
+## Token Revocation
+
+When a user signs out, their authentication token is immediately revoked. The Ash Coffee API stores all tokens in the database for validation, which enables:
+
+- **Immediate revocation** - Tokens become invalid instantly upon sign-out
+- **Security** - Prevents reuse of old tokens even if they haven't expired
+- **Audit trail** - Track when tokens were created and revoked
+
+<Info>
+The token revocation is permanent. Users cannot "un-revoke" a token and must sign in again to obtain a new one.
+</Info>
+
+## Sign Out Everywhere
+
+The Ash Coffee API also supports signing out from all devices simultaneously. This happens automatically when a user changes their password:
+
+```elixir
+# From lib/ash_coffee/accounts/user.ex:11-13
+log_out_everywhere do
+  apply_on_password_change? true
+end
+```
+
+When a password is changed, all existing tokens for that user are revoked, forcing them to sign in again on all devices.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always clear local token storage">
+    After a successful sign-out, always remove the token from your local storage (localStorage, sessionStorage, cookies, etc.) to prevent accidental reuse.
+    
+    ```javascript
+    localStorage.removeItem('authToken');
+    sessionStorage.removeItem('authToken');
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle network failures gracefully">
+    If the sign-out request fails due to network issues, still clear the local token and redirect to login. The server-side token will eventually expire.
+    
+    ```javascript
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Sign-out failed, clearing token anyway');
+    } finally {
+      localStorage.removeItem('authToken');
+      window.location.href = '/login';
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Redirect after sign-out">
+    Always redirect users to a public page (like login) after signing out to prevent them from accessing protected content.
+  </Accordion>
+  
+  <Accordion title="Provide feedback">
+    Show a success message or toast notification to confirm the user has been signed out.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Sign In" icon="right-to-bracket" href="/api/auth/sign-in">
+    Authenticate users to get a new token
+  </Card>
+  
+  <Card title="Token Management" icon="key" href="/authentication/tokens">
+    Learn about token lifecycle and security
+  </Card>
+  
+  <Card title="Password Reset" icon="lock-keyhole" href="/api/auth/password-reset">
+    Help users recover their accounts
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle authentication errors
+  </Card>
+</CardGroup>

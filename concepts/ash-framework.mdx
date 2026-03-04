@@ -1,0 +1,147 @@
+---
+title: Ash Framework
+description: Learn about the Ash Framework and how it powers the Ash Coffee API with declarative resource definitions and built-in authorization.
+---
+
+## What is Ash Framework?
+
+Ash Framework is a declarative, resource-oriented application development framework for Elixir. Instead of writing imperative code with controllers and context modules, you define **resources** (like User, Token) with their attributes, actions, and policies. Ash then handles the business logic, data persistence, authorization, and API exposure automatically.
+
+Think of Ash as a way to describe *what* your application does, rather than *how* it does it.
+
+## Why Ash Coffee uses Ash
+
+The Ash Coffee API leverages Ash Framework for several key reasons:
+
+1. **Declarative resource definitions** - User and authentication logic is defined in a clear, readable structure
+2. **Built-in authentication** - The `AshAuthentication` extension provides password strategies, token management, and confirmation flows out of the box
+3. **Policy-based authorization** - Security rules are declared alongside resources using `Ash.Policy.Authorizer`
+4. **Automatic API generation** - Resources can be exposed via JSON:API, GraphQL, or other formats with minimal configuration
+5. **Data layer abstraction** - Swap PostgreSQL for another database without changing resource definitions
+
+<Info>
+Ash Coffee uses `AshPostgres` as the data layer, which integrates seamlessly with Ecto and Phoenix.
+</Info>
+
+## Key concepts
+
+### Resources
+
+A **resource** is the core building block in Ash. It represents a domain entity (like a User or Token) with:
+
+- **Attributes** - The fields/columns of your data (email, password, timestamps)
+- **Actions** - Operations you can perform (create, read, update, delete, custom actions)
+- **Relationships** - Connections to other resources
+- **Policies** - Authorization rules that control access
+
+Here's how a resource is defined in Ash Coffee:
+
+```elixir lib/ash_coffee/accounts/user.ex
+defmodule AshCoffee.Accounts.User do
+  use Ash.Resource,
+    otp_app: :ash_coffee,
+    domain: AshCoffee.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshAuthentication]
+  
+  # ... attributes, actions, policies defined below
+end
+```
+
+### Domains
+
+A **domain** (previously called "API" in older Ash versions) groups related resources together. It serves as the public interface for interacting with your resources.
+
+In Ash Coffee, all authentication resources are grouped under the `AshCoffee.Accounts` domain:
+
+```elixir lib/ash_coffee/accounts.ex
+defmodule AshCoffee.Accounts do
+  use Ash.Domain,
+    otp_app: :ash_coffee
+
+  resources do
+    resource AshCoffee.Accounts.Token
+    resource AshCoffee.Accounts.User
+  end
+end
+```
+
+### Actions
+
+**Actions** define what operations can be performed on a resource. Ash provides five standard action types:
+
+- **Create** - Insert new records (e.g., `register_with_password`)
+- **Read** - Query records (e.g., `sign_in_with_password`, `get_by_email`)
+- **Update** - Modify existing records (e.g., `change_password`, `reset_password_with_token`)
+- **Destroy** - Delete records (e.g., `expunge_expired` tokens)
+- **Generic** - Custom actions that don't fit the CRUD model (e.g., `request_password_reset_token`)
+
+Actions can have arguments, validations, and transformations (called **changes** and **preparations**).
+
+### Policies
+
+Policies control who can perform which actions. Ash Coffee uses policies to ensure only the authentication system can interact with sensitive resources:
+
+```elixir lib/ash_coffee/accounts/user.ex
+policies do
+  bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+    authorize_if always()
+  end
+end
+```
+
+This policy says: "If the interaction is coming from the AshAuthentication system, always allow it."
+
+## How Ash integrates with Phoenix
+
+Ash Coffee is a Phoenix application that uses Ash for its business logic layer:
+
+1. **Phoenix routes** - Standard Phoenix controllers and LiveViews handle HTTP requests
+2. **Ash domains** - Controllers call domain functions like `Ash.create(User, :register_with_password, %{...})`
+3. **AshAuthentication** - Provides plugs and LiveView components for auth flows
+4. **AshJsonApi** - (Optional) Can automatically expose resources as JSON:API endpoints
+
+<Tip>
+You can use Ash resources with traditional Phoenix controllers, or expose them automatically via `AshJsonApi.Router` for standards-compliant REST APIs.
+</Tip>
+
+## Benefits for API development
+
+### Consistency
+All resources follow the same patterns - attributes, actions, policies. New team members can quickly understand any resource.
+
+### Security by default
+Policies must explicitly grant access. If you forget to add a policy, the action is denied by default.
+
+### Less boilerplate
+Ash handles argument validation, database transactions, error formatting, and authorization automatically.
+
+### Extensibility
+Extensions like `AshAuthentication`, `AshJsonApi`, and `AshGraphql` add powerful features without custom code.
+
+### Testing
+Actions can be tested in isolation without HTTP requests:
+
+```elixir
+test "registers a user with valid credentials" do
+  assert {:ok, user} = Ash.create(User, :register_with_password, %{
+    email: "test@example.com",
+    password: "password123",
+    password_confirmation: "password123"
+  })
+  
+  assert user.email == "test@example.com"
+end
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Resources and Domains" icon="database" href="/concepts/resources-and-domains">
+    Deep dive into the User and Token resources
+  </Card>
+  <Card title="Actions" icon="bolt" href="/concepts/actions">
+    Learn how actions power authentication flows
+  </Card>
+</CardGroup>

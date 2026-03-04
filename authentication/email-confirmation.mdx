@@ -1,0 +1,489 @@
+---
+title: 'Email Confirmation'
+description: 'Email verification and confirmation flow for new user registrations'
+---
+
+## Overview
+
+Email confirmation ensures that users have access to the email address they registered with. The Ash Coffee API requires email confirmation for all new registrations and provides automatic confirmation for certain authentication flows like magic links and password resets.
+
+## Confirmation Configuration
+
+From the User resource (`lib/ash_coffee/accounts/user.ex`):
+
+```elixir
+confirmation :confirm_new_user do
+  monitor_fields [:email]
+  confirm_on_create? true
+  confirm_on_update? false
+  require_interaction? true
+  confirmed_at_field :confirmed_at
+  auto_confirm_actions [:sign_in_with_magic_link, :reset_password_with_token]
+  sender AshCoffee.Accounts.User.Senders.SendNewUserConfirmationEmail
+end
+```
+
+### Configuration Options
+
+<ParamField path="monitor_fields" type="list">
+  Fields to monitor for changes that require re-confirmation. When `:email` changes, a new confirmation is required.
+</ParamField>
+
+<ParamField path="confirm_on_create" type="boolean" default="true">
+  When true, sends a confirmation email immediately after user registration.
+</ParamField>
+
+<ParamField path="confirm_on_update" type="boolean" default="false">
+  When false, email changes don't automatically trigger a new confirmation (prevents email update attacks).
+</ParamField>
+
+<ParamField path="require_interaction" type="boolean" default="true">
+  When true, users must click the confirmation link. They cannot be auto-confirmed without explicit action.
+</ParamField>
+
+<ParamField path="confirmed_at_field" type="atom" default=":confirmed_at">
+  The database field that stores the confirmation timestamp.
+</ParamField>
+
+<ParamField path="auto_confirm_actions" type="list">
+  List of actions that automatically confirm the email without requiring the confirmation link:
+  - `:sign_in_with_magic_link` - Magic link sign-in confirms email
+  - `:reset_password_with_token` - Password reset confirms email
+</ParamField>
+
+<ParamField path="sender" type="module">
+  The module responsible for sending confirmation emails.
+</ParamField>
+
+## Confirmed At Field
+
+The `confirmed_at` attribute tracks when a user's email was confirmed:
+
+```elixir
+attribute :confirmed_at, :utc_datetime_usec
+```
+
+- `nil` indicates an unconfirmed email
+- A timestamp indicates the email was confirmed at that time
+
+## Email Confirmation Flow
+
+<Steps>
+  <Step title="User Registers">
+    User creates an account via `register_with_password`:
+    ```bash
+    curl -X POST https://api.ashcoffee.dev/api/json/users/register_with_password \
+      -H "Content-Type: application/json" \
+      -d '{
+        "user": {
+          "email": "user@example.com",
+          "password": "SecurePass123!",
+          "password_confirmation": "SecurePass123!"
+        }
+      }'
+    ```
+  </Step>
+  
+  <Step title="Receive JWT Token">
+    User receives a JWT token immediately but `confirmed_at` is `null`:
+    ```json
+    {
+      "data": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "attributes": {
+          "email": "user@example.com",
+          "confirmed_at": null
+        }
+      },
+      "meta": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Confirmation Email Sent">
+    The system automatically sends a confirmation email via the configured sender.
+  </Step>
+  
+  <Step title="User Clicks Link">
+    User clicks the confirmation link in their email:
+    ```
+    https://api.ashcoffee.dev/confirm_new_user/:token
+    ```
+  </Step>
+  
+  <Step title="Email Confirmed">
+    The system validates the token and updates `confirmed_at`:
+    ```json
+    {
+      "data": {
+        "attributes": {
+          "email": "user@example.com",
+          "confirmed_at": "2024-03-04T10:30:00.000000Z"
+        }
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Confirmation Email Sender
+
+The confirmation email is sent using a custom sender module (`lib/ash_coffee/accounts/user/senders/send_new_user_confirmation_email.ex`):
+
+```elixir
+defmodule AshCoffee.Accounts.User.Senders.SendNewUserConfirmationEmail do
+  @moduledoc """
+  Sends an email for a new user to confirm their email address.
+  """
+
+  use AshAuthentication.Sender
+  use AshCoffeeWeb, :verified_routes
+
+  import Swoosh.Email
+
+  alias AshCoffee.Mailer
+
+  @impl true
+  def send(user, token, _) do
+    new()
+    # TODO: Replace with your email
+    |> from({"noreply", "noreply@example.com"})
+    |> to(to_string(user.email))
+    |> subject("Confirm your email address")
+    |> html_body(body(token: token))
+    |> Mailer.deliver!()
+  end
+
+  defp body(params) do
+    url = url(~p"/confirm_new_user/#{params[:token]}")
+
+    """
+    <p>Click this link to confirm your email:</p>
+    <p><a href="#{url}">#{url}</a></p>
+    """
+  end
+end
+```
+
+### Customizing the Email
+
+To customize the confirmation email:
+
+```elixir
+defp body(params) do
+  url = url(~p"/confirm_new_user/#{params[:token]}")
+
+  """
+  <html>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h1 style="color: #4F46E5;">Welcome to Ash Coffee!</h1>
+      <p>Thanks for signing up. We're excited to have you on board.</p>
+      <p>Please confirm your email address by clicking the button below:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="#{url}" 
+           style="background: #4F46E5; color: white; padding: 12px 30px; 
+                  text-decoration: none; border-radius: 6px; display: inline-block;">Confirm Email</a>
+      </div>
+      <p>Or copy and paste this link into your browser:</p>
+      <p style="color: #6B7280; word-break: break-all;">#{url}</p>
+      <p style="margin-top: 30px; color: #6B7280; font-size: 14px;">
+        If you didn't create an account, you can safely ignore this email.
+      </p>
+    </body>
+  </html>
+  """
+end
+```
+
+## Confirmation Route
+
+The confirmation route is configured in the router (`lib/ash_coffee_web/router.ex`):
+
+```elixir
+confirm_route AshCoffee.Accounts.User, :confirm_new_user,
+  auth_routes_prefix: "/auth",
+  overrides: [AshCoffeeWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.DaisyUI]
+```
+
+This creates the route:
+```
+GET /confirm_new_user/:token
+```
+
+## Auto-Confirm Actions
+
+Certain actions automatically confirm the user's email without requiring them to click the confirmation link:
+
+### 1. Magic Link Sign In
+
+When a user signs in via magic link (`:sign_in_with_magic_link`), their email is automatically confirmed:
+
+```elixir
+auto_confirm_actions [:sign_in_with_magic_link, :reset_password_with_token]
+```
+
+**Rationale**: If a user can receive and click a magic link, they've proven they have access to the email address.
+
+### 2. Password Reset
+
+When a user resets their password (`:reset_password_with_token`), their email is automatically confirmed:
+
+```elixir
+update :reset_password_with_token do
+  argument :reset_token, :string do
+    allow_nil? false
+    sensitive? true
+  end
+
+  argument :password, :string do
+    description "The proposed password for the user, in plain text."
+    allow_nil? false
+    constraints min_length: 8
+    sensitive? true
+  end
+
+  argument :password_confirmation, :string do
+    description "The proposed password for the user (again), in plain text."
+    allow_nil? false
+    sensitive? true
+  end
+
+  validate AshAuthentication.Strategy.Password.ResetTokenValidation
+  validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+  change AshAuthentication.Strategy.Password.HashPasswordChange
+  change AshAuthentication.GenerateTokenChange
+end
+```
+
+**Rationale**: If a user can receive and use a password reset link, they've proven email ownership.
+
+<Info>
+  Auto-confirm actions streamline the user experience by avoiding redundant email verification steps when the user has already proven email ownership through other means.
+</Info>
+
+## Resending Confirmation Emails
+
+Users can request a new confirmation email if they didn't receive the original:
+
+```bash
+curl -X POST https://api.ashcoffee.dev/api/json/users/request_confirmation_email \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": {
+      "email": "user@example.com"
+    }
+  }'
+```
+
+<Warning>
+  For security reasons, the API returns a success message whether or not the email exists. This prevents email enumeration attacks.
+</Warning>
+
+## Confirmation Token Security
+
+Confirmation tokens are:
+
+- Cryptographically secure random strings
+- Stored in the Token resource with `purpose: "confirm"`
+- Time-limited (typically expire after 24-48 hours)
+- Single-use (revoked after successful confirmation)
+- Marked as `sensitive? true` to prevent logging
+
+### Token Validation
+
+When a user clicks a confirmation link, the API:
+
+1. Extracts the token from the URL
+2. Looks up the token in the database
+3. Verifies the token hasn't expired
+4. Verifies the token hasn't been used
+5. Updates the user's `confirmed_at` field
+6. Revokes the confirmation token
+
+## Requiring Email Confirmation
+
+To enforce that users must have confirmed emails before accessing certain resources, use Ash policies:
+
+```elixir
+policies do
+  policy action_type(:read) do
+    authorize_if expr(confirmed_at != nil)
+  end
+  
+  policy action_type(:create) do
+    authorize_if expr(confirmed_at != nil)
+  end
+end
+```
+
+Or check in the controller/LiveView:
+
+```elixir
+def index(conn, _params) do
+  user = conn.assigns[:current_user]
+  
+  if user.confirmed_at do
+    render(conn, :index, products: list_products())
+  else
+    conn
+    |> put_flash(:error, "Please confirm your email address to continue.")
+    |> redirect(to: ~p"/confirmation-required")
+  end
+end
+```
+
+## Success Handler
+
+From the AuthController (`lib/ash_coffee_web/controllers/auth_controller.ex`):
+
+```elixir
+def success(conn, activity, user, _token) do
+  return_to = get_session(conn, :return_to) || ~p"/"
+
+  message =
+    case activity do
+      {:confirm_new_user, :confirm} -> "Your email address has now been confirmed"
+      {:password, :reset} -> "Your password has successfully been reset"
+      _ -> "You are now signed in"
+    end
+
+  conn
+  |> delete_session(:return_to)
+  |> store_in_session(user)
+  |> assign(:current_user, user)
+  |> put_flash(:info, message)
+  |> redirect(to: return_to)
+end
+```
+
+After successful confirmation, users see: "Your email address has now been confirmed"
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Cannot Sign In Without Confirmation">
+    If the API requires confirmation before sign-in:
+    
+    ```json
+    {
+      "errors": [{
+        "code": "unconfirmed",
+        "title": "Email Not Confirmed",
+        "detail": "You must confirm your email address before signing in."
+      }]
+    }
+    ```
+    Status: `403 Forbidden`
+  </Accordion>
+  
+  <Accordion title="Invalid or Expired Confirmation Token">
+    ```json
+    {
+      "errors": [{
+        "code": "invalid_token",
+        "title": "Invalid Token",
+        "detail": "The confirmation link is invalid or has expired."
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+    
+    Solution: Request a new confirmation email
+  </Accordion>
+  
+  <Accordion title="Already Confirmed">
+    ```json
+    {
+      "errors": [{
+        "code": "already_confirmed",
+        "title": "Already Confirmed",
+        "detail": "This email address has already been confirmed."
+      }]
+    }
+    ```
+    Status: `422 Unprocessable Entity`
+  </Accordion>
+</AccordionGroup>
+
+## Testing Confirmation in Development
+
+During development, preview confirmation emails in the Swoosh mailbox:
+
+```elixir
+# config/dev.exs
+config :ash_coffee, AshCoffee.Mailer,
+  adapter: Swoosh.Adapters.Local
+```
+
+Access the mailbox at:
+```
+http://localhost:4000/dev/mailbox
+```
+
+Click confirmation links directly from the mailbox preview.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="User Experience">
+    - Send confirmation emails immediately after registration
+    - Use clear, actionable email subject lines
+    - Include a prominent call-to-action button
+    - Provide a text link as backup
+    - Explain what happens after confirmation
+    - Make resending easy
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Use secure, random tokens
+    - Set reasonable expiration times (24-48 hours)
+    - Make tokens single-use
+    - Don't leak user existence in error messages
+    - Rate limit confirmation email requests
+    - Log confirmation attempts for audit
+  </Accordion>
+  
+  <Accordion title="Email Deliverability">
+    - Use a reputable email service (SendGrid, Mailgun, etc.)
+    - Configure SPF, DKIM, and DMARC records
+    - Use a recognizable sender name and email
+    - Avoid spam trigger words in subject/body
+    - Monitor delivery rates and bounce rates
+  </Accordion>
+</AccordionGroup>
+
+## Skipping Confirmation (Development Only)
+
+For development/testing, you can temporarily disable confirmation:
+
+```elixir
+# config/dev.exs
+config :ash_coffee, :require_confirmation, false
+```
+
+Then in your User resource:
+
+```elixir
+confirmation :confirm_new_user do
+  confirm_on_create? Application.get_env(:ash_coffee, :require_confirmation, true)
+  # ... rest of config
+end
+```
+
+<Warning>
+  Never disable email confirmation in production. It's a critical security measure to verify user identity and prevent abuse.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Password Strategy" icon="key" href="/authentication/password-strategy">
+    Learn about password reset flows
+  </Card>
+  
+  <Card title="Magic Links" icon="wand-magic-sparkles" href="/authentication/magic-links">
+    Understand auto-confirmation with magic links
+  </Card>
+</CardGroup>

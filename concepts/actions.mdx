@@ -1,0 +1,578 @@
+---
+title: Actions
+description: Learn how Ash actions define the operations you can perform on resources like User and Token.
+---
+
+## What are actions?
+
+In Ash Framework, **actions** define what you can *do* with a resource. They're the verbs of your API:
+
+- Register a user
+- Sign in with a password
+- Change a password
+- Revoke a token
+- Look up expired tokens
+
+Actions encapsulate business logic in a declarative, testable, and reusable way.
+
+## Types of actions
+
+Ash provides five standard action types:
+
+| Type | Purpose | Examples |
+|------|---------|----------|
+| **Create** | Insert new records | `register_with_password`, `store_token` |
+| **Read** | Query records | `sign_in_with_password`, `get_by_email`, `expired` |
+| **Update** | Modify existing records | `change_password`, `reset_password_with_token` |
+| **Destroy** | Delete records | `expunge_expired` |
+| **Generic** | Custom logic | `request_password_reset_token`, `revoked?` |
+
+<Info>
+Generic actions don't interact with the database directly. They're useful for workflows like sending emails or checking token validity.
+</Info>
+
+## Action anatomy
+
+Let's break down a real action from the User resource:
+
+```elixir lib/ash_coffee/accounts/user.ex
+read :sign_in_with_password do
+  description "Attempt to sign in using a email and password."
+  get? true
+
+  argument :email, :ci_string do
+    description "The email to use for retrieving the user."
+    allow_nil? false
+  end
+
+  argument :password, :string do
+    description "The password to check for the matching user."
+    allow_nil? false
+    sensitive? true
+  end
+
+  # validates the provided email and password and generates a token
+  prepare AshAuthentication.Strategy.Password.SignInPreparation
+
+  metadata :token, :string do
+    description "A JWT that can be used to authenticate the user."
+    allow_nil? false
+  end
+end
+```
+
+### Key components
+
+**Action type and name**
+```elixir
+read :sign_in_with_password do
+```
+This is a `read` action named `:sign_in_with_password`. Read actions query the database and can return one record (`get? true`) or many.
+
+**Arguments**
+```elixir
+argument :email, :ci_string do
+  allow_nil? false
+end
+```
+Arguments are the inputs to an action. Here, email and password are required. The `sensitive?` flag prevents passwords from being logged.
+
+**Preparations**
+```elixir
+prepare AshAuthentication.Strategy.Password.SignInPreparation
+```
+Preparations modify the query or changeset before execution. This preparation validates credentials and generates a JWT.
+
+**Metadata**
+```elixir
+metadata :token, :string do
+  allow_nil? false
+end
+```
+Metadata is additional data returned alongside the record. Here, we return the JWT token with the user.
+
+## Actions in the User resource
+
+Let's explore the key actions defined in `AshCoffee.Accounts.User`:
+
+### Registration: `register_with_password`
+
+```elixir lib/ash_coffee/accounts/user.ex
+create :register_with_password do
+  description "Register a new user with a email and password."
+
+  argument :email, :ci_string do
+    allow_nil? false
+  end
+
+  argument :password, :string do
+    description "The proposed password for the user, in plain text."
+    allow_nil? false
+    constraints min_length: 8
+    sensitive? true
+  end
+
+  argument :password_confirmation, :string do
+    description "The proposed password for the user (again), in plain text."
+    allow_nil? false
+    sensitive? true
+  end
+
+  # Sets the email from the argument
+  change set_attribute(:email, arg(:email))
+
+  # Hashes the provided password
+  change AshAuthentication.Strategy.Password.HashPasswordChange
+
+  # Generates an authentication token for the user
+  change AshAuthentication.GenerateTokenChange
+
+  # validates that the password matches the confirmation
+  validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+
+  metadata :token, :string do
+    description "A JWT that can be used to authenticate the user."
+    allow_nil? false
+  end
+end
+```
+
+**What happens during registration:**
+
+1. Validate arguments (email, password, password_confirmation)
+2. Check password meets constraints (min 8 characters)
+3. Validate password matches confirmation
+4. Set the email attribute
+5. Hash the password (never store plain text!)
+6. Generate a JWT token
+7. Insert the user into the database
+8. Return the user and token
+
+<Tip>
+Notice how changes run in order. The password is hashed *before* being stored, and the token is generated *after* the user is created.
+</Tip>
+
+### Authentication: `sign_in_with_password`
+
+We saw this action earlier. Here's how you use it:
+
+```elixir
+case Ash.get(AshCoffee.Accounts.User, :sign_in_with_password, %{
+  email: "user@example.com",
+  password: "password123"
+}) do
+  {:ok, user, %{token: token}} ->
+    # Successfully authenticated
+    {:ok, token}
+  
+  {:error, _} ->
+    # Invalid credentials
+    {:error, "Invalid email or password"}
+end
+```
+
+### Password change: `change_password`
+
+```elixir lib/ash_coffee/accounts/user.ex
+update :change_password do
+  require_atomic? false
+  accept []
+  
+  argument :current_password, :string, sensitive?: true, allow_nil?: false
+  argument :password, :string,
+    sensitive?: true,
+    allow_nil?: false,
+    constraints: [min_length: 8]
+  argument :password_confirmation, :string, sensitive?: true, allow_nil?: false
+
+  validate confirm(:password, :password_confirmation)
+  validate {AshAuthentication.Strategy.Password.PasswordValidation,
+            strategy_name: :password, password_argument: :current_password}
+  change {AshAuthentication.Strategy.Password.HashPasswordChange, strategy_name: :password}
+end
+```
+
+**Key features:**
+
+- **`accept []`** - No attributes can be set directly; all changes go through arguments
+- **Multiple validations** - Confirm new password matches, and verify current password is correct
+- **Automatic hashing** - The new password is hashed before storage
+
+<Note>
+`require_atomic? false` means this action can't be performed atomically in the database. Some validations (like checking the current password) require the full record.
+</Note>
+
+### Password reset: `request_password_reset_token` and `reset_password_with_token`
+
+**Step 1: Request a reset**
+
+```elixir lib/ash_coffee/accounts/user.ex
+action :request_password_reset_token do
+  description "Send password reset instructions to a user if they exist."
+
+  argument :email, :ci_string do
+    allow_nil? false
+  end
+
+  # creates a reset token and invokes the relevant senders
+  run {AshAuthentication.Strategy.Password.RequestPasswordReset, action: :get_by_email}
+end
+```
+
+This is a **generic action** that doesn't modify the user directly. Instead, it:
+
+1. Looks up the user by email (`:get_by_email`)
+2. Generates a time-limited reset token
+3. Sends a password reset email via `AshCoffee.Accounts.User.Senders.SendPasswordResetEmail`
+
+**Step 2: Reset with token**
+
+```elixir lib/ash_coffee/accounts/user.ex
+update :reset_password_with_token do
+  argument :reset_token, :string do
+    allow_nil? false
+    sensitive? true
+  end
+
+  argument :password, :string do
+    description "The proposed password for the user, in plain text."
+    allow_nil? false
+    constraints min_length: 8
+    sensitive? true
+  end
+
+  argument :password_confirmation, :string do
+    description "The proposed password for the user (again), in plain text."
+    allow_nil? false
+    sensitive? true
+  end
+
+  # validates the provided reset token
+  validate AshAuthentication.Strategy.Password.ResetTokenValidation
+
+  # validates that the password matches the confirmation
+  validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
+
+  # Hashes the provided password
+  change AshAuthentication.Strategy.Password.HashPasswordChange
+
+  # Generates an authentication token for the user
+  change AshAuthentication.GenerateTokenChange
+end
+```
+
+### User lookup: `get_by_email` and `get_by_subject`
+
+```elixir lib/ash_coffee/accounts/user.ex
+read :get_by_email do
+  description "Looks up a user by their email"
+  get_by :email
+end
+
+read :get_by_subject do
+  description "Get a user by the subject claim in a JWT"
+  argument :subject, :string, allow_nil?: false
+  get? true
+  prepare AshAuthentication.Preparations.FilterBySubject
+end
+```
+
+These are simple read actions:
+
+- **`get_by :email`** - Shorthand for "look up by the email identity"
+- **`get_by_subject`** - Used internally to verify JWTs and load the authenticated user
+
+## Actions in the Token resource
+
+The Token resource has specialized actions for token management:
+
+### Storing tokens: `store_token`
+
+```elixir lib/ash_coffee/accounts/token.ex
+create :store_token do
+  description "Stores a token used for the provided purpose."
+  accept [:extra_data, :purpose]
+  argument :token, :string, allow_nil?: false, sensitive?: true
+  change AshAuthentication.TokenResource.StoreTokenChange
+end
+```
+
+When a user signs in, this action stores the JWT in the database for tracking and revocation.
+
+### Revoking tokens: `revoke_token` and `revoke_jti`
+
+```elixir lib/ash_coffee/accounts/token.ex
+create :revoke_token do
+  description "Revoke a token. Creates a revocation token corresponding to the provided token."
+  accept [:extra_data]
+  argument :token, :string, allow_nil?: false, sensitive?: true
+  change AshAuthentication.TokenResource.RevokeTokenChange
+end
+
+create :revoke_jti do
+  description "Revoke a token by JTI. Creates a revocation token corresponding to the provided jti."
+  accept [:extra_data]
+  argument :subject, :string, allow_nil?: false, sensitive?: true
+  argument :jti, :string, allow_nil?: false, sensitive?: true
+  change AshAuthentication.TokenResource.RevokeJtiChange
+end
+```
+
+These create "revocation tokens" that blacklist specific JWTs, useful for:
+
+- Logging out
+- Invalidating tokens when a password changes
+- Responding to security incidents
+
+### Checking revocation: `revoked?`
+
+```elixir lib/ash_coffee/accounts/token.ex
+action :revoked?, :boolean do
+  description "Returns true if a revocation token is found for the provided token"
+  argument :token, :string, sensitive?: true
+  argument :jti, :string, sensitive?: true
+  run AshAuthentication.TokenResource.IsRevoked
+end
+```
+
+This is a **generic action** that returns a boolean. It's used during authentication to ensure tokens haven't been revoked.
+
+### Finding expired tokens: `expired`
+
+```elixir lib/ash_coffee/accounts/token.ex
+read :expired do
+  description "Look up all expired tokens."
+  filter expr(expires_at < now())
+end
+```
+
+This read action uses a **filter expression** to only return tokens where `expires_at` is in the past. You could use this in a scheduled job to clean up old tokens.
+
+### Cleaning up: `expunge_expired`
+
+```elixir lib/ash_coffee/accounts/token.ex
+destroy :expunge_expired do
+  description "Deletes expired tokens."
+  change filter expr(expires_at < now())
+end
+```
+
+This destroy action deletes all expired tokens in one go:
+
+```elixir
+# Run this in a daily background job
+Ash.bulk_destroy(AshCoffee.Accounts.Token, :expunge_expired, %{})
+```
+
+## How actions are exposed via JSON:API
+
+Actions can be exposed automatically via `AshJsonApi`. While Ash Coffee currently uses custom Phoenix controllers, you *could* expose actions like this:
+
+```elixir
+defmodule AshCoffee.Accounts.User do
+  use Ash.Resource,
+    extensions: [AshJsonApi.Resource]
+  
+  json_api do
+    type "user"
+    
+    routes do
+      # POST /api/users/register
+      post :register_with_password, route: "/register"
+      
+      # POST /api/users/sign-in
+      post :sign_in_with_password, route: "/sign-in"
+      
+      # PATCH /api/users/:id/change-password
+      patch :change_password
+    end
+  end
+end
+```
+
+The JSON:API extension automatically:
+
+- Parses request bodies
+- Validates input against action arguments
+- Executes the action
+- Formats responses according to the JSON:API spec
+- Returns appropriate error codes
+
+<Tip>
+You can mix and match. Use `AshJsonApi` for standard CRUD, and custom controllers for complex authentication flows.
+</Tip>
+
+## Arguments and validations
+
+### Argument options
+
+```elixir
+argument :email, :ci_string do
+  description "The user's email address"
+  allow_nil? false
+  default "guest@example.com"
+  sensitive? false
+end
+```
+
+- **`allow_nil?`** - Required if false (default: `true`)
+- **`default`** - Value to use if not provided
+- **`sensitive?`** - Hide from logs and error messages
+- **`constraints`** - Type-specific rules (min_length, max, pattern, etc.)
+
+### Validation examples
+
+```elixir
+# Confirm two fields match
+validate confirm(:password, :password_confirmation)
+
+# Custom validation module
+validate {MyApp.Validations.StrongPassword, strength: :high}
+
+# Inline validation
+validate fn changeset, _context ->
+  if valid?(changeset) do
+    :ok
+  else
+    {:error, field: :email, message: "must be a company email"}
+  end
+end
+```
+
+## Preparations and changes
+
+### Preparations (for read actions)
+
+Preparations modify the query *before* it runs:
+
+```elixir
+# Filter results
+prepare fn query, _context ->
+  Ash.Query.filter(query, active: true)
+end
+
+# Load related data
+prepare fn query, _context ->
+  Ash.Query.load(query, [:profile, :posts])
+end
+
+# Use a module
+prepare AshAuthentication.Preparations.FilterBySubject
+```
+
+### Changes (for create/update actions)
+
+Changes modify the changeset *before* persistence:
+
+```elixir
+# Set an attribute
+change set_attribute(:role, :user)
+
+# Use an argument's value
+change set_attribute(:email, arg(:email))
+
+# Custom change module
+change AshAuthentication.Strategy.Password.HashPasswordChange
+
+# Inline change
+change fn changeset, _context ->
+  Ash.Changeset.change_attribute(changeset, :last_login, DateTime.utc_now())
+end
+```
+
+## Testing actions
+
+Actions can be tested in isolation:
+
+```elixir
+test "registers a user with valid credentials" do
+  assert {:ok, user, %{token: token}} = Ash.create(
+    AshCoffee.Accounts.User,
+    :register_with_password,
+    %{
+      email: "test@example.com",
+      password: "password123",
+      password_confirmation: "password123"
+    }
+  )
+  
+  assert user.email == "test@example.com"
+  assert String.length(token) > 0
+  refute is_nil(user.hashed_password)
+  assert user.hashed_password != "password123"  # Should be hashed!
+end
+
+test "rejects weak passwords" do
+  assert {:error, changeset} = Ash.create(
+    AshCoffee.Accounts.User,
+    :register_with_password,
+    %{
+      email: "test@example.com",
+      password: "short",
+      password_confirmation: "short"
+    }
+  )
+  
+  assert [%{field: :password, message: message}] = changeset.errors
+  assert message =~ "min_length"
+end
+```
+
+## Best practices
+
+### Use descriptive names
+```elixir
+# Good
+read :get_active_users_by_role
+
+# Bad
+read :query
+```
+
+### Add descriptions
+```elixir
+read :sign_in_with_password do
+  description "Attempt to sign in using a email and password."
+  # ...
+end
+```
+
+### Mark sensitive data
+```elixir
+argument :password, :string, sensitive?: true
+argument :credit_card, :string, sensitive?: true
+```
+
+### Use constraints for validation
+```elixir
+argument :password, :string do
+  constraints [
+    min_length: 8,
+    max_length: 128,
+    match: ~r/[A-Z]/  # Require uppercase
+  ]
+end
+```
+
+### Compose actions
+```elixir
+# Reuse the :read action with extra filters
+read :get_confirmed_users do
+  prepare fn query, _ ->
+    query
+    |> Ash.Query.for_read(:read)  # Use default :read
+    |> Ash.Query.filter(not is_nil(confirmed_at))
+  end
+end
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Overview" icon="shield" href="/authentication/overview">
+    See how these actions power the full authentication system
+  </Card>
+  <Card title="Making Requests" icon="code" href="/guides/making-requests">
+    Learn how to call these actions from your frontend
+  </Card>
+</CardGroup>

@@ -1,0 +1,285 @@
+---
+title: Error Handling
+description: Understanding error responses and how to handle them in the Ash Coffee API
+---
+
+The Ash Coffee API returns errors in JSON:API format, providing detailed information about what went wrong and how to fix it.
+
+## Error Response Structure
+
+Errors follow the JSON:API specification with an `errors` array containing error objects:
+
+```json
+{
+  "errors": [
+    {
+      "code": "invalid_attribute",
+      "title": "Invalid Attribute",
+      "detail": "email is required",
+      "source": {
+        "pointer": "/data/attributes/email"
+      },
+      "status": "422"
+    }
+  ]
+}
+```
+
+Each error object contains:
+- `code`: Machine-readable error code
+- `title`: Human-readable error title
+- `detail`: Specific error message
+- `source`: Location of the error (pointer to the field)
+- `status`: HTTP status code
+
+## HTTP Status Codes
+
+The API uses standard HTTP status codes:
+
+<Accordion title="2xx Success">
+  - **200 OK**: Request succeeded
+  - **201 Created**: Resource created successfully
+  - **204 No Content**: Request succeeded with no response body
+</Accordion>
+
+<Accordion title="4xx Client Errors">
+  - **400 Bad Request**: Invalid request syntax or structure
+  - **401 Unauthorized**: Missing or invalid authentication token
+  - **403 Forbidden**: Authenticated but not authorized to access resource
+  - **404 Not Found**: Resource doesn't exist
+  - **422 Unprocessable Entity**: Validation errors
+</Accordion>
+
+<Accordion title="5xx Server Errors">
+  - **500 Internal Server Error**: Unexpected server error
+  - **503 Service Unavailable**: Service temporarily unavailable
+</Accordion>
+
+## Common Error Scenarios
+
+### Validation Errors (422)
+
+Validation errors occur when input doesn't meet requirements. The API is configured with `authorize_update_destroy_with_error?: true` (see `config/config.exs:16`), meaning authorization failures are returned as validation errors.
+
+<CodeGroup>
+
+```json Missing Required Field
+{
+  "errors": [
+    {
+      "code": "required",
+      "title": "is required",
+      "detail": "attribute email is required",
+      "source": {
+        "pointer": "/data/attributes/email"
+      },
+      "status": "422"
+    }
+  ]
+}
+```
+
+```json Password Too Short
+{
+  "errors": [
+    {
+      "code": "invalid_attribute",
+      "title": "Invalid Attribute",
+      "detail": "password must have length of at least 8",
+      "source": {
+        "pointer": "/data/attributes/password"
+      },
+      "status": "422"
+    }
+  ]
+}
+```
+
+```json Password Confirmation Mismatch
+{
+  "errors": [
+    {
+      "code": "invalid_attribute",
+      "title": "Invalid Attribute",
+      "detail": "password_confirmation does not match password",
+      "source": {
+        "pointer": "/data/attributes/password_confirmation"
+      },
+      "status": "422"
+    }
+  ]
+}
+```
+
+```json Duplicate Email
+{
+  "errors": [
+    {
+      "code": "invalid_attribute",
+      "title": "Invalid Attribute",
+      "detail": "email has already been taken",
+      "source": {
+        "pointer": "/data/attributes/email"
+      },
+      "status": "422"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+### Authentication Errors (401)
+
+Authentication errors occur when the token is missing, invalid, or expired:
+
+```json
+{
+  "errors": [
+    {
+      "code": "unauthorized",
+      "title": "Unauthorized",
+      "detail": "Invalid or expired token",
+      "status": "401"
+    }
+  ]
+}
+```
+
+<Note>
+Tokens are stored in the database when `store_all_tokens?: true` is configured (see `lib/ash_coffee/accounts/user.ex:30`). This allows for token revocation and "log out everywhere" functionality.
+</Note>
+
+### Authorization Errors (403)
+
+Authorization errors occur when authenticated but lacking permissions:
+
+```json
+{
+  "errors": [
+    {
+      "code": "forbidden",
+      "title": "Forbidden",
+      "detail": "You do not have permission to perform this action",
+      "status": "403"
+    }
+  ]
+}
+```
+
+The API uses `Ash.Policy.Authorizer` for fine-grained access control (see `lib/ash_coffee/accounts/user.ex:6`).
+
+### Invalid Credentials
+
+When sign-in credentials are incorrect:
+
+```json
+{
+  "errors": [
+    {
+      "code": "invalid_credentials",
+      "title": "Invalid Credentials",
+      "detail": "email or password is incorrect",
+      "status": "401"
+    }
+  ]
+}
+```
+
+### Not Found (404)
+
+When a requested resource doesn't exist:
+
+```json
+{
+  "errors": [
+    {
+      "code": "not_found",
+      "title": "Not Found",
+      "detail": "The requested resource was not found",
+      "status": "404"
+    }
+  ]
+}
+```
+
+## Error Handling Best Practices
+
+<Steps>
+  <Step title="Check Status Code">
+    Always check the HTTP status code to determine the error category (4xx client error vs 5xx server error).
+  </Step>
+
+  <Step title="Parse Error Array">
+    The `errors` array may contain multiple errors. Loop through all errors to display comprehensive feedback.
+
+    ```javascript
+    const response = await fetch('/api/json/users/register_with_password', {
+      method: 'POST',
+      headers: { /* ... */ },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const { errors } = await response.json();
+      errors.forEach(error => {
+        console.error(`${error.title}: ${error.detail}`);
+      });
+    }
+    ```
+  </Step>
+
+  <Step title="Map Errors to Fields">
+    Use the `source.pointer` to map errors to form fields:
+
+    ```javascript
+    const fieldErrors = {};
+    errors.forEach(error => {
+      if (error.source?.pointer) {
+        // Extract field name from pointer like "/data/attributes/email"
+        const field = error.source.pointer.split('/').pop();
+        fieldErrors[field] = error.detail;
+      }
+    });
+    ```
+  </Step>
+
+  <Step title="Handle Token Expiration">
+    Implement automatic token refresh or redirect to sign-in when receiving 401 errors:
+
+    ```javascript
+    if (response.status === 401) {
+      // Clear stored token
+      localStorage.removeItem('authToken');
+      // Redirect to sign-in
+      window.location.href = '/auth/sign-in';
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Never expose sensitive error details to end users in production. Log detailed errors server-side and show user-friendly messages to clients.
+</Warning>
+
+## Debugging Errors
+
+In development mode (`config/dev.exs`), the API provides additional debugging information:
+
+- `show_sensitive_data_on_connection_error: true` (line 11)
+- Policy breakdowns with `show_policy_breakdowns?: true` (line 2)
+- Detailed stack traces
+
+These features are disabled in production for security.
+
+## Error Logging
+
+The application logs errors using Elixir's Logger (configured in `config/config.exs:109-111`):
+
+```elixir
+config :logger, :default_formatter,
+  format: "$time $metadata[$level] $message\n",
+  metadata: [:request_id]
+```
+
+Each request has a unique `request_id` for tracing errors across logs.

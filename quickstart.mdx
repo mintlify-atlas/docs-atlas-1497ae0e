@@ -1,80 +1,253 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Ash Coffee API in minutes - from setup to your first authenticated request
 ---
 
-## Get started in three steps
+This guide will help you set up the Ash Coffee API and make your first authenticated API call. You'll register a user, sign in, and use the authentication token to access protected resources.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, ensure you have the following installed:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- **Elixir 1.15 or later** - [Install Elixir](https://elixir-lang.org/install.html)
+- **PostgreSQL** - [Install PostgreSQL](https://www.postgresql.org/download/)
+- **Git** - For cloning the repository
 
-### Step 2: Deploy your changes
+<Note>
+Make sure PostgreSQL is running before proceeding with the setup.
+</Note>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+## Setup the project
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Ash Coffee API repository to your local machine:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    git clone <your-repository-url>
+    cd ash_coffee
+    ```
+  </Step>
 
-### Step 3: Go live
+  <Step title="Install dependencies and setup">
+    Run the setup command to install dependencies, create the database, and run migrations:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    mix setup
+    ```
+
+    This command runs the following:
+    - `mix deps.get` - Installs all dependencies
+    - `mix ash.setup` - Creates and migrates the database
+    - `mix assets.setup` - Installs asset dependencies
+    - `mix assets.build` - Builds assets
+    - Seeds the database
+  </Step>
+
+  <Step title="Configure the database">
+    The default database configuration is in `config/dev.exs`:
+
+    ```elixir config/dev.exs
+    config :ash_coffee, AshCoffee.Repo,
+      username: "martha_pop",
+      password: "postgres_pop",
+      hostname: "localhost",
+      database: "ash_coffee_dev",
+      pool_size: 10
+    ```
+
+    Update these values if your PostgreSQL setup differs.
+  </Step>
+
+  <Step title="Start the server">
+    Start the Phoenix server:
+
+    ```bash
+    mix phx.server
+    ```
+
+    Or start it inside IEx for interactive development:
+
+    ```bash
+    iex -S mix phx.server
+    ```
+
+    The API will be available at `http://localhost:4000`.
+  </Step>
+</Steps>
+
+## Make your first API call
+
+The Ash Coffee API provides JSON API endpoints for authentication. Let's walk through the authentication flow.
+
+<Steps>
+  <Step title="Register a new user">
+    Create a new user account:
+
+    ```bash
+    curl -X POST http://localhost:4000/api/json/users \
+      -H "Content-Type: application/vnd.api+json" \
+      -H "Accept: application/vnd.api+json" \
+      -d '{
+        "data": {
+          "type": "user",
+          "attributes": {
+            "email": "user@example.com",
+            "password": "securepassword123",
+            "password_confirmation": "securepassword123"
+          }
+        }
+      }'
+    ```
+
+    **Expected response:**
+
+    ```json
+    {
+      "data": {
+        "type": "user",
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "attributes": {
+          "email": "user@example.com",
+          "confirmed_at": null
+        },
+        "meta": {
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        }
+      }
+    }
+    ```
+
+    <Note>
+    The user is created but not confirmed. In production, you would send a confirmation email. For development, you can disable the confirmation requirement.
+    </Note>
+  </Step>
+
+  <Step title="Sign in with password">
+    Sign in to get an authentication token:
+
+    ```bash
+    curl -X POST http://localhost:4000/auth/user/password/sign_in \
+      -H "Content-Type: application/json" \
+      -d '{
+        "user": {
+          "email": "user@example.com",
+          "password": "securepassword123"
+        }
+      }'
+    ```
+
+    **Expected response:**
+
+    ```json
+    {
+      "user": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "email": "user@example.com",
+        "confirmed_at": "2026-03-04T10:30:00.000000Z"
+      },
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1NTBlODQwMC1lMjliLTQxZDQtYTcxNi00NDY2NTU0NDAwMDAiLCJleHAiOjE3MDk1NTQyMDB9.xyz123"
+    }
+    ```
+
+    Save the `token` value - you'll need it for authenticated requests.
+  </Step>
+
+  <Step title="Make an authenticated request">
+    Use the token to access protected resources:
+
+    ```bash
+    curl http://localhost:4000/api/json/users \
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+      -H "Accept: application/vnd.api+json"
+    ```
+
+    The API uses Bearer token authentication. Include the token in the `Authorization` header for all authenticated requests.
+  </Step>
+</Steps>
+
+## Understanding the authentication flow
+
+The Ash Coffee API uses **AshAuthentication** for secure user authentication:
+
+1. **Password Authentication** - Users register with email and password
+2. **JWT Tokens** - Authentication tokens are JWTs stored in the database
+3. **Token Resource** - All tokens are tracked in the `tokens` table
+4. **Confirmation Flow** - Email confirmation can be required for new users
+5. **Password Reset** - Users can request password reset tokens via email
+
+<Info>
+The authentication strategy is configured in `lib/ash_coffee/accounts/user.ex:9-49`. You can customize the authentication behavior by modifying this configuration.
+</Info>
+
+## API endpoints
+
+Key authentication endpoints available:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/json/users` | POST | Register a new user |
+| `/auth/user/password/sign_in` | POST | Sign in with email and password |
+| `/auth/user/sign_out` | DELETE | Sign out (revoke token) |
+| `/auth/user/password/reset_request` | POST | Request password reset |
+| `/auth/user/password/reset` | POST | Reset password with token |
+
+## Development tools
+
+The API includes helpful development tools:
+
+- **LiveDashboard** - Available at `http://localhost:4000/dev/dashboard`
+- **Mailbox Preview** - View emails at `http://localhost:4000/dev/mailbox`
+- **SwaggerUI** - API documentation at `http://localhost:4000/api/json/swaggerui`
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation Guide" icon="download" href="/installation">
+    Learn about system requirements and detailed setup options
+  </Card>
+  <Card title="Authentication" icon="lock" href="/authentication/overview">
+    Explore all authentication strategies and configuration
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/auth/register">
+    Browse the complete API endpoint documentation
+  </Card>
+  <Card title="Development Setup" icon="gear" href="/guides/development-setup">
+    Learn how to set up and configure your environment
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection errors">
+    If you see database connection errors:
+
+    1. Verify PostgreSQL is running: `pg_isready`
+    2. Check the database credentials in `config/dev.exs`
+    3. Ensure the database exists: `mix ash.setup`
+    4. Check PostgreSQL logs for connection issues
+  </Accordion>
+
+  <Accordion title="Token validation errors">
+    If authentication tokens aren't working:
+
+    1. Verify the `TOKEN_SIGNING_SECRET` is set in production
+    2. Check that tokens haven't expired
+    3. Ensure the Bearer token format is correct
+    4. Look for token revocation in the `tokens` table
+  </Accordion>
+
+  <Accordion title="Mix setup fails">
+    If `mix setup` fails:
+
+    1. Run `mix deps.get` separately to check for dependency issues
+    2. Try `mix ash.reset` to drop and recreate the database
+    3. Ensure you have the required Elixir version (1.15+)
+    4. Check that PostgreSQL extensions are available
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+The development configuration includes hardcoded secrets. **Never use these in production.** Always set environment variables for production deployments.
+</Warning>

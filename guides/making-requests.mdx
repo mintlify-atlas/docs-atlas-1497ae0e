@@ -1,0 +1,228 @@
+---
+title: Making API Requests
+description: Learn how to make requests to the Ash Coffee API using JSON:API format
+---
+
+The Ash Coffee API follows the [JSON:API specification](https://jsonapi.org/), which provides a standardized way to structure API requests and responses.
+
+## Content-Type Header
+
+All requests and responses use the JSON:API media type. You must include the correct `Content-Type` and `Accept` headers:
+
+```http
+Content-Type: application/vnd.api+json
+Accept: application/vnd.api+json
+```
+
+<Note>
+The API is configured to recognize `application/vnd.api+json` as the JSON:API format (see `config/config.exs:10-12`).
+</Note>
+
+## Request Structure
+
+JSON:API requests follow a consistent structure with a `data` object containing `type` and `attributes`:
+
+```json
+{
+  "data": {
+    "type": "user",
+    "attributes": {
+      "email": "user@example.com",
+      "password": "securepassword123"
+    }
+  }
+}
+```
+
+## Authentication
+
+The API uses JWT Bearer token authentication. After signing in or registering, include the token in the `Authorization` header:
+
+```http
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+<Steps>
+  <Step title="Register or Sign In">
+    Create an account or sign in to receive a JWT token:
+
+    ```bash
+    curl -X POST http://localhost:4000/api/json/users/register_with_password \
+      -H "Content-Type: application/vnd.api+json" \
+      -H "Accept: application/vnd.api+json" \
+      -d '{
+        "data": {
+          "type": "user",
+          "attributes": {
+            "email": "user@example.com",
+            "password": "mypassword123",
+            "password_confirmation": "mypassword123"
+          }
+        }
+      }'
+    ```
+
+    The response includes a JWT token in the metadata:
+
+    ```json
+    {
+      "data": {
+        "type": "user",
+        "id": "123e4567-e89b-12d3-a456-426614174000",
+        "attributes": {
+          "email": "user@example.com"
+        },
+        "meta": {
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Use Token in Requests">
+    Include the token in subsequent requests:
+
+    ```bash
+    curl -X GET http://localhost:4000/api/json/users \
+      -H "Content-Type: application/vnd.api+json" \
+      -H "Accept: application/vnd.api+json" \
+      -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    ```
+  </Step>
+</Steps>
+
+## Response Format
+
+Successful responses follow the JSON:API format with a `data` key:
+
+```json
+{
+  "data": {
+    "type": "user",
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": null
+    }
+  },
+  "jsonapi": {
+    "version": "1.0"
+  }
+}
+```
+
+## API Pipeline
+
+The API uses a dedicated pipeline with authentication middleware (see `lib/ash_coffee_web/router.ex:18-22`):
+
+```elixir
+pipeline :api do
+  plug :accepts, ["json"]
+  plug :load_from_bearer
+  plug :set_actor, :user
+end
+```
+
+This pipeline:
+- Accepts JSON requests
+- Loads the user from the Bearer token
+- Sets the authenticated user as the actor for authorization
+
+## Example Requests
+
+<CodeGroup>
+
+```bash cURL
+# Sign in
+curl -X POST http://localhost:4000/api/json/users/sign_in_with_password \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Accept: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "user",
+      "attributes": {
+        "email": "user@example.com",
+        "password": "mypassword123"
+      }
+    }
+  }'
+
+# Authenticated request
+curl -X GET http://localhost:4000/api/json/users/me \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Accept: application/vnd.api+json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+```javascript JavaScript
+// Sign in
+const response = await fetch('http://localhost:4000/api/json/users/sign_in_with_password', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/vnd.api+json',
+    'Accept': 'application/vnd.api+json',
+  },
+  body: JSON.stringify({
+    data: {
+      type: 'user',
+      attributes: {
+        email: 'user@example.com',
+        password: 'mypassword123'
+      }
+    }
+  })
+});
+
+const { data } = await response.json();
+const token = data.meta.token;
+
+// Authenticated request
+const userResponse = await fetch('http://localhost:4000/api/json/users/me', {
+  headers: {
+    'Content-Type': 'application/vnd.api+json',
+    'Accept': 'application/vnd.api+json',
+    'Authorization': `Bearer ${token}`
+  }
+});
+```
+
+```python Python
+import requests
+
+# Sign in
+response = requests.post(
+    'http://localhost:4000/api/json/users/sign_in_with_password',
+    headers={
+        'Content-Type': 'application/vnd.api+json',
+        'Accept': 'application/vnd.api+json',
+    },
+    json={
+        'data': {
+            'type': 'user',
+            'attributes': {
+                'email': 'user@example.com',
+                'password': 'mypassword123'
+            }
+        }
+    }
+)
+
+token = response.json()['data']['meta']['token']
+
+# Authenticated request
+user_response = requests.get(
+    'http://localhost:4000/api/json/users/me',
+    headers={
+        'Content-Type': 'application/vnd.api+json',
+        'Accept': 'application/vnd.api+json',
+        'Authorization': f'Bearer {token}'
+    }
+)
+```
+
+</CodeGroup>
+
+<Warning>
+The API requires `require_token_presence_for_authentication? true` (see `lib/ash_coffee/accounts/user.ex:31`), meaning all authenticated endpoints require a valid JWT token.
+</Warning>

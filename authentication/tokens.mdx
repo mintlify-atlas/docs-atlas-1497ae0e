@@ -1,0 +1,516 @@
+---
+title: 'JWT Token Management'
+description: 'Understanding JWT tokens, validation, storage, and revocation in Ash Coffee API'
+---
+
+## Overview
+
+The Ash Coffee API uses JWT (JSON Web Tokens) for stateless authentication with database-backed token storage. This approach combines the benefits of JWTs with the security of token tracking and revocation.
+
+## Token Configuration
+
+From the User resource (`lib/ash_coffee/accounts/user.ex`):
+
+```elixir
+tokens do
+  enabled? true
+  token_resource AshCoffee.Accounts.Token
+  signing_secret AshCoffee.Secrets
+  store_all_tokens? true
+  require_token_presence_for_authentication? true
+end
+```
+
+### Configuration Options
+
+<ParamField path="enabled" type="boolean" default="true">
+  Enables JWT token generation for authentication strategies
+</ParamField>
+
+<ParamField path="token_resource" type="module" default="AshCoffee.Accounts.Token">
+  The Ash resource used to persist tokens in the database
+</ParamField>
+
+<ParamField path="signing_secret" type="module" default="AshCoffee.Secrets">
+  Module that provides the secret key for signing JWTs
+</ParamField>
+
+<ParamField path="store_all_tokens" type="boolean" default="true">
+  When true, all generated tokens are stored in the database for tracking and revocation
+</ParamField>
+
+<ParamField path="require_token_presence_for_authentication" type="boolean" default="true">
+  Requires tokens to exist in the database to be valid (prevents replay attacks after revocation)
+</ParamField>
+
+## Token Structure
+
+JWTs issued by the API contain the following claims:
+
+```json
+{
+  "sub": "550e8400-e29b-41d4-a716-446655440000",
+  "jti": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+  "exp": 1709557200,
+  "iat": 1709470800,
+  "purpose": "user"
+}
+```
+
+### JWT Claims
+
+<ParamField path="sub" type="string">
+  **Subject**: The user ID (UUID) this token belongs to
+</ParamField>
+
+<ParamField path="jti" type="string">
+  **JWT ID**: Unique identifier for this specific token instance
+</ParamField>
+
+<ParamField path="exp" type="integer">
+  **Expiration Time**: Unix timestamp when the token expires
+</ParamField>
+
+<ParamField path="iat" type="integer">
+  **Issued At**: Unix timestamp when the token was issued
+</ParamField>
+
+<ParamField path="purpose" type="string">
+  **Purpose**: Token purpose (e.g., "user", "remember_me", "password_reset")
+</ParamField>
+
+## Token Resource Schema
+
+Tokens are persisted in the database with the following structure (`lib/ash_coffee/accounts/token.ex`):
+
+```elixir
+attributes do
+  attribute :jti, :string do
+    primary_key? true
+    public? true
+    allow_nil? false
+    sensitive? true
+  end
+
+  attribute :subject, :string do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :expires_at, :utc_datetime do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :purpose, :string do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :extra_data, :map do
+    public? true
+  end
+
+  create_timestamp :created_at
+  update_timestamp :updated_at
+end
+```
+
+<Info>
+  The `jti` (JWT ID) serves as the primary key, ensuring each token is unique and can be efficiently looked up during validation.
+</Info>
+
+## Using Tokens in API Requests
+
+After receiving a JWT token from any authentication endpoint, include it in subsequent API requests:
+
+### Authorization Header
+
+```bash
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### Complete Request Example
+
+<CodeGroup>
+```bash cURL
+curl -X GET https://api.ashcoffee.dev/api/json/products \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+```javascript JavaScript
+const token = localStorage.getItem('authToken');
+
+const response = await fetch('https://api.ashcoffee.dev/api/json/products', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+
+const products = await response.json();
+```
+
+```python Python
+import requests
+
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+response = requests.get(
+    'https://api.ashcoffee.dev/api/json/products',
+    headers={'Authorization': f'Bearer {token}'}
+)
+
+products = response.json()
+```
+</CodeGroup>
+
+### API Pipeline
+
+The API automatically extracts and validates tokens from the Authorization header:
+
+```elixir
+pipeline :api do
+  plug :accepts, ["json"]
+  plug :load_from_bearer
+  plug :set_actor, :user
+end
+```
+
+- `:load_from_bearer` extracts the token from the Authorization header
+- `:set_actor` sets the authenticated user as the actor for authorization policies
+
+## Token Validation Flow
+
+When a request includes a JWT token, the API performs the following validation steps:
+
+<Steps>
+  <Step title="Extract Token">
+    Extract the token from the `Authorization: Bearer` header
+  </Step>
+  
+  <Step title="Verify Signature">
+    Verify the JWT signature using the configured signing secret
+  </Step>
+  
+  <Step title="Check Expiration">
+    Ensure the token hasn't expired (`exp` claim)
+  </Step>
+  
+  <Step title="Database Lookup">
+    Look up the token in the database using the `jti` claim:
+    ```elixir
+    read :get_token do
+      description "Look up a token by JTI or token, and an optional purpose."
+      get? true
+      argument :token, :string, sensitive?: true
+      argument :jti, :string, sensitive?: true
+      argument :purpose, :string, sensitive?: false
+
+      prepare AshAuthentication.TokenResource.GetTokenPreparation
+    end
+    ```
+  </Step>
+  
+  <Step title="Check Revocation">
+    Verify the token hasn't been revoked:
+    ```elixir
+    action :revoked?, :boolean do
+      description "Returns true if a revocation token is found for the provided token"
+      argument :token, :string, sensitive?: true
+      argument :jti, :string, sensitive?: true
+
+      run AshAuthentication.TokenResource.IsRevoked
+    end
+    ```
+  </Step>
+  
+  <Step title="Load User">
+    Load the user from the `subject` claim:
+    ```elixir
+    read :get_by_subject do
+      description "Get a user by the subject claim in a JWT"
+      argument :subject, :string, allow_nil?: false
+      get? true
+      prepare AshAuthentication.Preparations.FilterBySubject
+    end
+    ```
+  </Step>
+  
+  <Step title="Set Actor">
+    Set the authenticated user as the actor for the request context
+  </Step>
+</Steps>
+
+## Token Storage Actions
+
+### Store Token
+
+Tokens are automatically stored when generated, but can also be stored manually:
+
+```elixir
+create :store_token do
+  description "Stores a token used for the provided purpose."
+  accept [:extra_data, :purpose]
+  argument :token, :string, allow_nil?: false, sensitive?: true
+  change AshAuthentication.TokenResource.StoreTokenChange
+end
+```
+
+### Revoke Token
+
+Revoke a specific token:
+
+```elixir
+create :revoke_token do
+  description "Revoke a token. Creates a revocation token corresponding to the provided token."
+  accept [:extra_data]
+  argument :token, :string, allow_nil?: false, sensitive?: true
+
+  change AshAuthentication.TokenResource.RevokeTokenChange
+end
+```
+
+### Revoke by JTI
+
+```elixir
+create :revoke_jti do
+  description "Revoke a token by JTI. Creates a revocation token corresponding to the provided jti."
+  accept [:extra_data]
+  argument :subject, :string, allow_nil?: false, sensitive?: true
+  argument :jti, :string, allow_nil?: false, sensitive?: true
+
+  change AshAuthentication.TokenResource.RevokeJtiChange
+end
+```
+
+### Revoke All Tokens for User
+
+```elixir
+update :revoke_all_stored_for_subject do
+  description "Revokes all stored tokens for a specific subject."
+  accept [:extra_data]
+  argument :subject, :string, allow_nil?: false, sensitive?: true
+  change AshAuthentication.TokenResource.RevokeAllStoredForSubjectChange
+end
+```
+
+## Token Expiration
+
+### Automatic Cleanup
+
+Expired tokens can be cleaned up automatically:
+
+```elixir
+read :expired do
+  description "Look up all expired tokens."
+  filter expr(expires_at < now())
+end
+
+destroy :expunge_expired do
+  description "Deletes expired tokens."
+  change filter expr(expires_at < now())
+end
+```
+
+### Cleanup Task
+
+Run a periodic task to remove expired tokens:
+
+```elixir
+# In a scheduled job or GenServer
+def cleanup_expired_tokens do
+  AshCoffee.Accounts.Token
+  |> Ash.Query.for_read(:expired)
+  |> Ash.read!()
+  |> Enum.each(fn token ->
+    Ash.destroy!(token, action: :expunge_expired)
+  end)
+end
+```
+
+## Token Revocation on Password Change
+
+The API includes automatic token revocation when passwords change:
+
+```elixir
+log_out_everywhere do
+  apply_on_password_change? true
+end
+```
+
+When a user changes their password via the `:change_password` or `:reset_password_with_token` actions, all existing tokens are automatically revoked for security.
+
+<Warning>
+  After a password change, users must sign in again with their new password to receive a new token. All previous sessions across all devices are terminated.
+</Warning>
+
+## Remember Me Tokens
+
+The API supports long-lived "remember me" tokens:
+
+```elixir
+remember_me :remember_me
+```
+
+Remember me tokens:
+- Have extended expiration times
+- Are stored with `purpose: "remember_me"`
+- Can be used to maintain long-term sessions
+- Are still subject to revocation on password change
+
+### Using Remember Me
+
+Clients can request a remember me token during sign-in:
+
+```bash
+curl -X POST https://api.ashcoffee.dev/api/json/users/sign_in_with_password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": {
+      "email": "user@example.com",
+      "password": "SecurePass123!",
+      "remember_me": true
+    }
+  }'
+```
+
+## Error Responses
+
+<AccordionGroup>
+  <Accordion title="Missing Authorization Header">
+    ```json
+    {
+      "errors": [{
+        "code": "unauthorized",
+        "title": "Unauthorized",
+        "detail": "Authentication required"
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+  </Accordion>
+  
+  <Accordion title="Invalid Token Signature">
+    ```json
+    {
+      "errors": [{
+        "code": "invalid_token",
+        "title": "Invalid Token",
+        "detail": "Token signature verification failed"
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+  </Accordion>
+  
+  <Accordion title="Expired Token">
+    ```json
+    {
+      "errors": [{
+        "code": "token_expired",
+        "title": "Token Expired",
+        "detail": "The token has expired"
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+  </Accordion>
+  
+  <Accordion title="Revoked Token">
+    ```json
+    {
+      "errors": [{
+        "code": "token_revoked",
+        "title": "Token Revoked",
+        "detail": "This token has been revoked"
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+  </Accordion>
+  
+  <Accordion title="Token Not Found in Database">
+    ```json
+    {
+      "errors": [{
+        "code": "token_not_found",
+        "title": "Token Not Found",
+        "detail": "Token does not exist in the database"
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+    
+    This can occur if:
+    - The token was manually deleted from the database
+    - Database was reset/restored
+    - Token was issued before `store_all_tokens?` was enabled
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Token Storage (Client-Side)">
+    **Browser Applications**:
+    - Use `httpOnly` cookies for maximum security (prevents XSS)
+    - Avoid localStorage if possible (vulnerable to XSS)
+    - Use sessionStorage for temporary sessions
+    
+    **Mobile Applications**:
+    - Use secure storage (Keychain on iOS, Keystore on Android)
+    - Never store tokens in plain text or shared preferences
+  </Accordion>
+  
+  <Accordion title="Token Transmission">
+    - Always use HTTPS in production
+    - Never include tokens in URLs (use headers)
+    - Don't log tokens in client or server logs
+    - Mark tokens as `sensitive? true` in Ash resources
+  </Accordion>
+  
+  <Accordion title="Token Lifetime">
+    - Use short expiration times for standard tokens (hours)
+    - Use longer times for remember me tokens (days/weeks)
+    - Implement token refresh if needed
+    - Clean up expired tokens regularly
+  </Accordion>
+  
+  <Accordion title="Revocation Strategy">
+    - Revoke all tokens on password change
+    - Provide user-facing "sign out everywhere" functionality
+    - Allow users to view and revoke active sessions
+    - Implement automatic revocation for suspicious activity
+  </Accordion>
+</AccordionGroup>
+
+## Token Refresh (Optional Implementation)
+
+While not included by default, you can implement token refresh:
+
+```elixir
+def refresh_token(current_token) do
+  with {:ok, claims} <- verify_token(current_token),
+       {:ok, user} <- get_user_by_subject(claims["sub"]),
+       :ok <- revoke_token(current_token),
+       {:ok, new_token} <- generate_token(user) do
+    {:ok, new_token}
+  end
+end
+```
+
+<Note>
+  Consider the security implications of token refresh. Short-lived tokens with refresh capability can be more secure than long-lived tokens, but add complexity.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Password Strategy" icon="key" href="/authentication/password-strategy">
+    Learn about password authentication
+  </Card>
+  
+  <Card title="Email Confirmation" icon="envelope-circle-check" href="/authentication/email-confirmation">
+    Configure email confirmation flows
+  </Card>
+</CardGroup>

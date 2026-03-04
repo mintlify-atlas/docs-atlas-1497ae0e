@@ -1,0 +1,442 @@
+---
+title: Development Setup
+description: Set up your local development environment for the Ash Coffee API
+---
+
+This guide walks you through setting up the Ash Coffee API on your local machine for development.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+<Steps>
+  <Step title="Elixir & Erlang">
+    Install Elixir 1.15 or later (see `mix.exs:8`):
+
+    ```bash
+    # macOS with Homebrew
+    brew install elixir
+
+    # Ubuntu/Debian
+    sudo apt-get install elixir
+
+    # Verify installation
+    elixir --version
+    ```
+  </Step>
+
+  <Step title="PostgreSQL">
+    Install PostgreSQL 12 or later:
+
+    ```bash
+    # macOS with Homebrew
+    brew install postgresql@15
+    brew services start postgresql@15
+
+    # Ubuntu/Debian
+    sudo apt-get install postgresql postgresql-contrib
+    sudo systemctl start postgresql
+
+    # Verify installation
+    psql --version
+    ```
+  </Step>
+
+  <Step title="Node.js (for assets)">
+    Install Node.js 18+ for building frontend assets:
+
+    ```bash
+    # macOS with Homebrew
+    brew install node
+
+    # Ubuntu/Debian
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
+    # Verify installation
+    node --version
+    npm --version
+    ```
+  </Step>
+</Steps>
+
+## Initial Setup
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone <repository-url>
+    cd ash_coffee
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    Install Elixir and Node.js dependencies:
+
+    ```bash
+    mix deps.get
+    ```
+  </Step>
+
+  <Step title="Configure Database">
+    The database configuration is in `config/dev.exs:5-12`:
+
+    ```elixir
+    config :ash_coffee, AshCoffee.Repo,
+      username: "martha_pop",
+      password: "postgres_pop",
+      hostname: "localhost",
+      database: "ash_coffee_dev",
+      stacktrace: true,
+      show_sensitive_data_on_connection_error: true,
+      pool_size: 10
+    ```
+
+    Update these values in `config/dev.exs` or set environment variables in `config/runtime.exs`.
+  </Step>
+
+  <Step title="Set Up Database">
+    Create and migrate the database using the `setup` alias (see `mix.exs:92`):
+
+    ```bash
+    mix setup
+    ```
+
+    This command runs:
+    - `deps.get` - Install dependencies
+    - `ash.setup` - Create database and run migrations
+    - `assets.setup` - Install Tailwind and esbuild
+    - `assets.build` - Build assets
+    - `run priv/repo/seeds.exs` - Seed the database
+  </Step>
+</Steps>
+
+## Database Commands
+
+The project includes several useful database aliases in `mix.exs:90-105`:
+
+### Create and Migrate
+
+```bash
+# Create database and run migrations
+mix ash.setup
+
+# Or use the legacy ecto commands
+mix ecto.create
+mix ecto.migrate
+```
+
+### Reset Database
+
+```bash
+# Drop and recreate database
+mix ecto.reset
+```
+
+### Seed Data
+
+Run the seed script to populate test data:
+
+```bash
+mix run priv/repo/seeds.exs
+```
+
+<Note>
+The `priv/repo/seeds.exs` file is currently empty. You can add seed data by using the Ash resource actions directly.
+</Note>
+
+### Example Seed Data
+
+You can add this to `priv/repo/seeds.exs` to create test users:
+
+```elixir
+# Create a test user
+AshCoffee.Accounts.User
+|> Ash.Changeset.for_create(:register_with_password, %{
+  email: "test@example.com",
+  password: "password123",
+  password_confirmation: "password123"
+})
+|> Ash.create!()
+|> IO.inspect(label: "Created user")
+```
+
+## Running the Application
+
+<Steps>
+  <Step title="Start the Server">
+    Start the Phoenix server:
+
+    ```bash
+    mix phx.server
+    ```
+
+    The application will be available at:
+    - **Web UI**: http://localhost:4000
+    - **JSON API**: http://localhost:4000/api/json
+  </Step>
+
+  <Step title="Verify API Access">
+    Test the API is working:
+
+    ```bash
+    curl http://localhost:4000/api/json/swaggerui
+    ```
+
+    You should see the Swagger UI interface.
+  </Step>
+</Steps>
+
+## Development Tools
+
+The development environment includes several useful tools:
+
+### LiveDashboard
+
+Phoenix LiveDashboard provides real-time metrics and debugging (see `lib/ash_coffee_web/router.ex:104`):
+
+- **URL**: http://localhost:4000/dev/dashboard
+- **Features**:
+  - Request metrics and performance
+  - Process information
+  - Database queries
+  - Memory usage
+  - ETS tables
+
+### Mailbox Preview
+
+View emails sent by the application without an SMTP server (see `lib/ash_coffee_web/router.ex:105`):
+
+- **URL**: http://localhost:4000/dev/mailbox
+- **Configuration**: Uses `Swoosh.Adapters.Local` (see `config/config.exs:85`)
+- **Use Case**: Test password reset and confirmation emails
+
+### Swagger UI
+
+Interactive API documentation and testing (see `lib/ash_coffee_web/router.ex:44-46`):
+
+- **URL**: http://localhost:4000/api/json/swaggerui
+- **OpenAPI Spec**: http://localhost:4000/api/json/open_api
+- **Features**:
+  - Browse all endpoints
+  - Test API calls
+  - View request/response schemas
+  - Authentication testing
+
+<Note>
+The Swagger UI is configured with `default_model_expand_depth: 4` for better schema visibility.
+</Note>
+
+### Interactive Elixir Shell (IEx)
+
+Start an interactive shell with the application loaded:
+
+```bash
+iex -S mix phx.server
+```
+
+This allows you to:
+- Test Ash resources and actions
+- Query the database
+- Debug issues
+- Explore the application state
+
+Example:
+
+```elixir
+# List all users
+AshCoffee.Accounts.User
+|> Ash.Query.new()
+|> Ash.read!()
+
+# Create a user
+AshCoffee.Accounts.User
+|> Ash.Changeset.for_create(:register_with_password, %{
+  email: "new@example.com",
+  password: "password123",
+  password_confirmation: "password123"
+})
+|> Ash.create!()
+```
+
+## Running Tests
+
+The test suite is configured to set up the database automatically (see `mix.exs:95`):
+
+```bash
+# Run all tests
+mix test
+
+# Run specific test file
+mix test test/ash_coffee/accounts_test.exs
+
+# Run with coverage
+mix test --cover
+
+# Run only failed tests
+mix test --failed
+```
+
+<Warning>
+The test alias runs `ash.setup --quiet` before tests, which will reset your test database.
+</Warning>
+
+## Pre-commit Checks
+
+Before committing, run the pre-commit checks (see `mix.exs:103`):
+
+```bash
+mix precommit
+```
+
+This runs:
+- `compile --warnings-as-errors` - Ensure no warnings
+- `deps.unlock --unused` - Remove unused dependencies
+- `format` - Format code
+- `test` - Run all tests
+
+## Asset Development
+
+The project uses Tailwind CSS v4 and esbuild for assets:
+
+### Build Assets
+
+```bash
+# Build once
+mix assets.build
+
+# Watch for changes (automatic with phx.server)
+mix phx.server
+```
+
+### Asset Configuration
+
+<CodeGroup>
+
+```elixir Tailwind (config/config.exs:98-106)
+config :tailwind,
+  version: "4.1.12",
+  ash_coffee: [
+    args: ~w(
+      --input=assets/css/app.css
+      --output=priv/static/assets/css/app.css
+    ),
+    cd: Path.expand("..", __DIR__)
+  ]
+```
+
+```elixir esbuild (config/config.exs:88-95)
+config :esbuild,
+  version: "0.25.4",
+  ash_coffee: [
+    args:
+      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
+  ]
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+<Accordion title="Database connection errors">
+  Ensure PostgreSQL is running and credentials are correct:
+
+  ```bash
+  # Check PostgreSQL status
+  # macOS
+  brew services list
+
+  # Linux
+  sudo systemctl status postgresql
+
+  # Test connection
+  psql -U martha_pop -d ash_coffee_dev -h localhost
+  ```
+
+  If you get authentication errors, create the user:
+
+  ```sql
+  CREATE USER martha_pop WITH PASSWORD 'postgres_pop' CREATEDB;
+  ```
+</Accordion>
+
+<Accordion title="Port already in use">
+  If port 4000 is already in use:
+
+  ```bash
+  # Find process using port 4000
+  lsof -i :4000
+
+  # Kill the process
+  kill -9 <PID>
+
+  # Or change the port in config/dev.exs
+  config :ash_coffee, AshCoffeeWeb.Endpoint,
+    http: [ip: {127, 0, 0, 1}, port: 4001]
+  ```
+</Accordion>
+
+<Accordion title="Asset build errors">
+  Reinstall asset build tools:
+
+  ```bash
+  mix assets.setup
+  mix assets.build
+  ```
+
+  If errors persist, manually install:
+
+  ```bash
+  mix tailwind.install
+  mix esbuild.install
+  ```
+</Accordion>
+
+<Accordion title="Compilation errors">
+  Clean and rebuild:
+
+  ```bash
+  # Clean build artifacts
+  mix clean
+
+  # Clean dependencies
+  mix deps.clean --all
+
+  # Reinstall and compile
+  mix deps.get
+  mix compile
+  ```
+</Accordion>
+
+## Environment Variables
+
+Key environment variables for development:
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection URL | See `config/dev.exs` |
+| `SECRET_KEY_BASE` | Phoenix secret key | Generated in `config/dev.exs:27` |
+| `PHX_HOST` | Host for URL generation | `localhost` |
+| `PORT` | HTTP port | `4000` |
+
+Set these in `.env` or export them in your shell:
+
+```bash
+export DATABASE_URL="postgresql://user:pass@localhost/ash_coffee_dev"
+export SECRET_KEY_BASE="your-secret-key-base"
+```
+
+## Next Steps
+
+Now that your environment is set up:
+
+1. Explore the [API Endpoints](/api-reference) documentation
+2. Learn about [Making Requests](/guides/making-requests)
+3. Understand [Error Handling](/guides/error-handling)
+4. Implement [Pagination](/guides/pagination)
+
+<Note>
+The development environment includes live reloading for code changes. Edit any `.ex` or `.heex` file and the browser will automatically refresh (see `config/dev.exs:58-69`).
+</Note>

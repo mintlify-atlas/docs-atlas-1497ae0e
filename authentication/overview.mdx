@@ -1,0 +1,218 @@
+---
+title: 'Authentication Overview'
+description: 'Learn about the authentication strategies and JWT token management in Ash Coffee API'
+---
+
+## Introduction
+
+The Ash Coffee API uses **AshAuthentication** to provide a comprehensive authentication system built on the Ash Framework. The API supports multiple authentication strategies with JWT-based token management and automatic email confirmation flows.
+
+## Available Authentication Strategies
+
+The API implements the following authentication strategies:
+
+### 1. Password Authentication
+
+Traditional email and password authentication with bcrypt hashing:
+
+```elixir
+password :password do
+  identity_field :email
+  hash_provider AshAuthentication.BcryptProvider
+end
+```
+
+- **Identity field**: Email address (case-insensitive)
+- **Password hashing**: Bcrypt with secure defaults
+- **Password requirements**: Minimum 8 characters
+- **Password reset**: Token-based reset flow with email delivery
+
+### 2. Magic Link Authentication
+
+Passwordless authentication via email magic links:
+
+- Request a magic link via email
+- Click the link to sign in instantly
+- Automatically confirms email address on first use
+- No password required
+
+### 3. Remember Me Tokens
+
+Long-lived authentication tokens for persistent sessions:
+
+```elixir
+remember_me :remember_me
+```
+
+- Extended token lifetime for convenience
+- Optional opt-in during sign-in
+- Can be revoked individually or all at once
+
+## JWT Token Architecture
+
+The API uses JWT (JSON Web Tokens) for stateless authentication with persistent storage:
+
+```elixir
+tokens do
+  enabled? true
+  token_resource AshCoffee.Accounts.Token
+  signing_secret AshCoffee.Secrets
+  store_all_tokens? true
+  require_token_presence_for_authentication? true
+end
+```
+
+### Token Configuration
+
+<ParamField path="enabled" type="boolean" default="true">
+  JWT tokens are enabled for all authentication strategies
+</ParamField>
+
+<ParamField path="token_resource" type="module">
+  Tokens are stored in the `AshCoffee.Accounts.Token` resource for tracking and revocation
+</ParamField>
+
+<ParamField path="store_all_tokens" type="boolean" default="true">
+  All issued tokens are persisted to the database for audit trails and revocation
+</ParamField>
+
+<ParamField path="require_token_presence_for_authentication" type="boolean" default="true">
+  Authentication requires the token to exist in the database (prevents replay attacks)
+</ParamField>
+
+## Authentication Flow
+
+<Steps>
+  <Step title="Register or Sign In">
+    Choose your authentication method:
+    - Register with password
+    - Sign in with password
+    - Request a magic link
+  </Step>
+  
+  <Step title="Receive JWT Token">
+    On successful authentication, receive a JWT token in the response metadata:
+    ```json
+    {
+      "data": { ... },
+      "meta": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Use Token in Requests">
+    Include the token in the Authorization header for authenticated requests:
+    ```bash
+    Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+    ```
+  </Step>
+  
+  <Step title="Token Validation">
+    The API validates the token on each request:
+    - Signature verification
+    - Expiration check
+    - Database presence validation
+    - Subject (user) claim verification
+  </Step>
+</Steps>
+
+## Token Storage and Security
+
+All tokens are stored in the `tokens` database table with the following attributes:
+
+- **jti** (JWT ID): Unique identifier for the token
+- **subject**: User ID the token belongs to
+- **expires_at**: Token expiration timestamp
+- **purpose**: Token purpose (e.g., "user", "remember_me", "password_reset")
+- **extra_data**: Additional metadata (optional)
+
+<Warning>
+  All tokens are stored in the database. When a user changes their password, all existing tokens are automatically revoked via the `log_out_everywhere` add-on.
+</Warning>
+
+## Log Out Everywhere
+
+The API includes an automatic security feature:
+
+```elixir
+log_out_everywhere do
+  apply_on_password_change? true
+end
+```
+
+When a user changes their password, all active tokens are revoked across all devices for security.
+
+## Choosing the Right Strategy
+
+<AccordionGroup>
+  <Accordion title="When to use Password Authentication">
+    Best for:
+    - Traditional web and mobile applications
+    - Users who prefer password-based login
+    - Applications requiring explicit user credentials
+    - Internal tools and dashboards
+  </Accordion>
+  
+  <Accordion title="When to use Magic Links">
+    Best for:
+    - Passwordless authentication flows
+    - Reducing password fatigue
+    - Quick sign-in experiences
+    - Marketing emails with authenticated links
+  </Accordion>
+  
+  <Accordion title="When to use Remember Me">
+    Best for:
+    - Mobile applications
+    - Trusted devices
+    - Reducing re-authentication friction
+    - Long-running sessions
+  </Accordion>
+</AccordionGroup>
+
+## API Pipeline Configuration
+
+The API uses different authentication pipelines for different contexts:
+
+### Browser Pipeline
+
+```elixir
+pipeline :browser do
+  plug :load_from_session
+end
+```
+
+Loads user from session cookies for web applications.
+
+### API Pipeline
+
+```elixir
+pipeline :api do
+  plug :load_from_bearer
+  plug :set_actor, :user
+end
+```
+
+Loads user from Bearer token in Authorization header for API requests.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Password Strategy" icon="key" href="/authentication/password-strategy">
+    Learn how to implement password authentication
+  </Card>
+  
+  <Card title="Magic Links" icon="wand-magic-sparkles" href="/authentication/magic-links">
+    Implement passwordless authentication
+  </Card>
+  
+  <Card title="Token Management" icon="shield" href="/authentication/tokens">
+    Understand JWT tokens and revocation
+  </Card>
+  
+  <Card title="Email Confirmation" icon="envelope-circle-check" href="/authentication/email-confirmation">
+    Configure email confirmation flows
+  </Card>
+</CardGroup>

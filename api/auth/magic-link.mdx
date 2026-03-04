@@ -1,0 +1,322 @@
+---
+title: Magic link
+description: Passwordless authentication via email
+---
+
+## Endpoint
+
+```
+POST /api/json/magic-link/request
+```
+
+Request a magic link for passwordless authentication. A secure, single-use link is sent to the user's email address that automatically signs them in when clicked.
+
+<Info>
+Magic links provide a convenient, passwordless way for users to sign in. They're perfect for infrequent users or as an alternative to password authentication.
+</Info>
+
+## Request
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/vnd.api+json`
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="data" type="object" required>
+  The request data object
+  
+  <Expandable title="properties">
+    <ParamField body="type" type="string" required>
+      Must be `"magic_link"`
+    </ParamField>
+    
+    <ParamField body="attributes" type="object" required>
+      Magic link request attributes
+      
+      <Expandable title="properties">
+        <ParamField body="email" type="string" required>
+          Email address to send the magic link to
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+### Success Response (204 No Content)
+
+Returns `204 No Content` regardless of whether the email exists or not. This prevents email enumeration attacks.
+
+<Note>
+For security reasons, this endpoint always returns success even if the email doesn't exist. This prevents attackers from discovering valid email addresses.
+</Note>
+
+### Error Responses
+
+<Accordion title="400 Bad Request - Invalid Format">
+  ```json
+  {
+    "errors": [
+      {
+        "status": "400",
+        "title": "Bad Request",
+        "detail": "Invalid JSON:API request format"
+      }
+    ]
+  }
+  ```
+</Accordion>
+
+## Examples
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/api/json/magic-link/request \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "magic_link",
+      "attributes": {
+        "email": "user@example.com"
+      }
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/api/json/magic-link/request', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/vnd.api+json',
+  },
+  body: JSON.stringify({
+    data: {
+      type: 'magic_link',
+      attributes: {
+        email: 'user@example.com'
+      }
+    }
+  })
+});
+
+if (response.status === 204) {
+  console.log('Magic link sent! Check your email.');
+  // Show success message to user
+}
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.example.com/api/json/magic-link/request',
+    headers={'Content-Type': 'application/vnd.api+json'},
+    json={
+        'data': {
+            'type': 'magic_link',
+            'attributes': {
+                'email': 'user@example.com'
+            }
+        }
+    }
+)
+
+if response.status_code == 204:
+    print('Magic link sent! Check your email.')
+```
+</CodeGroup>
+
+## Magic Link Flow
+
+<Steps>
+  <Step title="User requests magic link">
+    User enters their email address and clicks "Send Magic Link". Your application sends a POST request to `/api/json/magic-link/request`.
+  </Step>
+  
+  <Step title="System generates secure token">
+    If the email exists, the system generates a secure, single-use token and creates a magic link URL.
+  </Step>
+  
+  <Step title="Email sent to user">
+    The magic link is sent to the user's email address using the configured Swoosh adapter.
+  </Step>
+  
+  <Step title="User clicks the link">
+    User clicks the magic link in their email, which redirects to your application with the token as a URL parameter (e.g., `https://yourapp.com/auth/magic?token=abc123...`).
+  </Step>
+  
+  <Step title="Application exchanges token for JWT">
+    Your application sends the token to the API's magic link verification endpoint, which validates the token and returns a JWT authentication token.
+  </Step>
+  
+  <Step title="User is signed in">
+    The JWT token is stored in local storage, and the user is redirected to the application dashboard.
+  </Step>
+</Steps>
+
+## Magic Link Configuration
+
+The magic link authentication strategy is configured in the User resource as part of the authentication strategies:
+
+```elixir
+# Configuration extracted from lib/ash_coffee/accounts/user.ex
+strategies do
+  password :password do
+    # ... password config
+  end
+  
+  # Magic link configuration (if enabled)
+  magic_link :magic_link do
+    sender AshCoffee.Accounts.User.Senders.SendMagicLinkEmail
+  end
+end
+```
+
+## Security Features
+
+<AccordionGroup>
+  <Accordion title="Single-use tokens">
+    Magic link tokens can only be used once. After a successful sign-in, the token is immediately invalidated and cannot be reused.
+  </Accordion>
+  
+  <Accordion title="Time-limited tokens">
+    Magic link tokens expire after a configured period (typically 15-30 minutes). This limits the window of opportunity for attackers.
+  </Accordion>
+  
+  <Accordion title="Email enumeration protection">
+    The endpoint always returns `204 No Content`, preventing attackers from discovering which email addresses are registered in the system.
+  </Accordion>
+  
+  <Accordion title="Auto-confirmation">
+    Users who sign in via magic link have their email automatically confirmed, since the magic link proves they have access to the email address:
+    
+    ```elixir
+    # From lib/ash_coffee/accounts/user.ex:21
+    auto_confirm_actions [:sign_in_with_magic_link, :reset_password_with_token]
+    ```
+  </Accordion>
+  
+  <Accordion title="Secure token generation">
+    Magic link tokens are cryptographically secure random values that cannot be guessed or predicted.
+  </Accordion>
+</AccordionGroup>
+
+## Email Delivery
+
+In development, magic link emails are sent to the local mailbox preview:
+
+```
+http://localhost:4000/dev/mailbox
+```
+
+In production, configure a real email adapter in `config/runtime.exs`:
+
+```elixir
+# Example production email configuration
+config :ash_coffee, AshCoffee.Mailer,
+  adapter: Swoosh.Adapters.Sendgrid,
+  api_key: System.get_env("SENDGRID_API_KEY")
+```
+
+See the [Swoosh documentation](https://hexdocs.pm/swoosh) for other adapter options like Mailgun, Postmark, AWS SES, etc.
+
+## Customizing the Email Template
+
+The magic link email template can be customized by modifying the sender module:
+
+```elixir
+# In lib/ash_coffee/accounts/user/senders/send_magic_link_email.ex
+defmodule AshCoffee.Accounts.User.Senders.SendMagicLinkEmail do
+  use AshAuthentication.Sender
+  
+  def send(user, token, _opts) do
+    # Customize the email content here
+    AshCoffee.Mailer.deliver(
+      Swoosh.Email.new()
+      |> Swoosh.Email.to(user.email)
+      |> Swoosh.Email.from({"Ash Coffee", "noreply@ashcoffee.com"})
+      |> Swoosh.Email.subject("Your Magic Link")
+      |> Swoosh.Email.html_body("""
+        <h1>Sign in to Ash Coffee</h1>
+        <p>Click the link below to sign in:</p>
+        <a href="https://yourapp.com/auth/magic?token=#{token}">Sign In</a>
+        <p>This link expires in 15 minutes.</p>
+      """)
+    )
+  end
+end
+```
+
+## When to Use Magic Links
+
+<CardGroup cols={2}>
+  <Card title="Infrequent users" icon="user-clock">
+    Great for users who sign in rarely and might forget passwords
+  </Card>
+  
+  <Card title="High security needs" icon="shield-halved">
+    Eliminates password-related vulnerabilities like weak passwords or reuse
+  </Card>
+  
+  <Card title="Simplified UX" icon="wand-magic-sparkles">
+    Reduces friction by eliminating password creation and management
+  </Card>
+  
+  <Card title="Mobile-first apps" icon="mobile-screen">
+    Easier than typing complex passwords on mobile devices
+  </Card>
+</CardGroup>
+
+## Comparison with Password Authentication
+
+| Feature | Magic Link | Password |
+|---------|-----------|----------|
+| **User experience** | One-click sign in | Requires remembering password |
+| **Security** | No password to steal or guess | Vulnerable to weak passwords |
+| **Setup** | Requires email access | Works offline |
+| **Speed** | Depends on email delivery | Immediate |
+| **Recovery** | N/A - just request new link | Requires password reset flow |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Show clear instructions">
+    Tell users to check their email and that the link expires soon. Provide a way to resend the link if needed.
+  </Accordion>
+  
+  <Accordion title="Handle expired links gracefully">
+    Show a helpful error message and offer to send a new magic link when users click an expired link.
+  </Accordion>
+  
+  <Accordion title="Verify email delivery">
+    Monitor email delivery failures and provide alternative authentication methods if magic link delivery fails.
+  </Accordion>
+  
+  <Accordion title="Consider rate limiting">
+    Prevent abuse by rate-limiting magic link requests per email address (e.g., max 3 requests per hour).
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Password Authentication" icon="key" href="/authentication/password-strategy">
+    Alternative authentication with passwords
+  </Card>
+  
+  <Card title="Email Confirmation" icon="envelope-circle-check" href="/authentication/email-confirmation">
+    Learn about email verification
+  </Card>
+  
+  <Card title="Token Management" icon="shield-halved" href="/authentication/tokens">
+    Understand JWT tokens and security
+  </Card>
+  
+  <Card title="Authentication Overview" icon="book-open" href="/authentication/overview">
+    Compare all authentication strategies
+  </Card>
+</CardGroup>

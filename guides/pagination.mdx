@@ -1,0 +1,346 @@
+---
+title: Pagination
+description: Learn how to paginate API responses in the Ash Coffee API
+---
+
+The Ash Coffee API uses keyset pagination (also called cursor-based pagination) for efficient handling of large datasets.
+
+## Pagination Configuration
+
+The API is configured with keyset pagination as the default (see `config/config.exs:22`):
+
+```elixir
+config :ash,
+  default_page_type: :keyset,
+  show_keysets_for_all_actions?: false
+```
+
+<Note>
+Keyset pagination is more efficient than offset-based pagination for large datasets because it doesn't require counting all records and maintains consistent performance regardless of page depth.
+</Note>
+
+## How Keyset Pagination Works
+
+Keyset pagination uses a "cursor" (keyset) that represents a position in the result set:
+
+1. Request the first page
+2. The response includes cursors for the next and previous pages
+3. Use these cursors to navigate through pages
+4. No need to track page numbers or offsets
+
+## Request Parameters
+
+To paginate results, use the `page` query parameter:
+
+### First Page
+
+Request the first page with a page size limit:
+
+```bash
+curl -X GET "http://localhost:4000/api/json/users?page[limit]=10" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Accept: application/vnd.api+json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+### Subsequent Pages
+
+Use the `after` cursor from the previous response to get the next page:
+
+```bash
+curl -X GET "http://localhost:4000/api/json/users?page[limit]=10&page[after]=CURSOR_VALUE" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Accept: application/vnd.api+json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+### Previous Pages
+
+Use the `before` cursor to navigate backwards:
+
+```bash
+curl -X GET "http://localhost:4000/api/json/users?page[limit]=10&page[before]=CURSOR_VALUE" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Accept: application/vnd.api+json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+```
+
+## Response Format
+
+Paginated responses include metadata with cursor information:
+
+```json
+{
+  "data": [
+    {
+      "type": "user",
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "attributes": {
+        "email": "user1@example.com"
+      }
+    },
+    {
+      "type": "user",
+      "id": "223e4567-e89b-12d3-a456-426614174001",
+      "attributes": {
+        "email": "user2@example.com"
+      }
+    }
+  ],
+  "links": {
+    "self": "/api/json/users?page[limit]=10",
+    "next": "/api/json/users?page[limit]=10&page[after]=eyJpZCI6IjIyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjYxNDE3NDAwMSJ9",
+    "prev": null
+  },
+  "meta": {
+    "page": {
+      "limit": 10,
+      "count": 10,
+      "has_next": true,
+      "has_prev": false
+    }
+  }
+}
+```
+
+### Response Fields
+
+- **data**: Array of resources in the current page
+- **links.self**: Current page URL
+- **links.next**: URL for the next page (null if no more pages)
+- **links.prev**: URL for the previous page (null if on first page)
+- **meta.page.limit**: Number of items per page
+- **meta.page.count**: Number of items in current page
+- **meta.page.has_next**: Whether there are more pages
+- **meta.page.has_prev**: Whether there are previous pages
+
+## Page Parameters
+
+<Accordion title="page[limit]">
+  **Type**: Integer  
+  **Default**: 25  
+  **Description**: Maximum number of records to return per page.
+
+  ```bash
+  # Get 50 records per page
+  ?page[limit]=50
+  ```
+</Accordion>
+
+<Accordion title="page[after]">
+  **Type**: String (cursor)  
+  **Description**: Return records after this cursor position.
+
+  ```bash
+  ?page[after]=eyJpZCI6IjEyM2U0NTY3In0
+  ```
+</Accordion>
+
+<Accordion title="page[before]">
+  **Type**: String (cursor)  
+  **Description**: Return records before this cursor position.
+
+  ```bash
+  ?page[before]=eyJpZCI6IjEyM2U0NTY3In0
+  ```
+</Accordion>
+
+## Implementation Example
+
+<CodeGroup>
+
+```javascript JavaScript
+class ApiClient {
+  constructor(baseUrl, token) {
+    this.baseUrl = baseUrl;
+    this.token = token;
+  }
+
+  async fetchPage(resource, { limit = 25, after = null, before = null } = {}) {
+    const params = new URLSearchParams({ 'page[limit]': limit });
+    if (after) params.append('page[after]', after);
+    if (before) params.append('page[before]', before);
+
+    const response = await fetch(`${this.baseUrl}/${resource}?${params}`, {
+      headers: {
+        'Content-Type': 'application/vnd.api+json',
+        'Accept': 'application/vnd.api+json',
+        'Authorization': `Bearer ${this.token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  async fetchAllPages(resource, { limit = 25 } = {}) {
+    let allData = [];
+    let cursor = null;
+
+    while (true) {
+      const response = await this.fetchPage(resource, { limit, after: cursor });
+      allData = allData.concat(response.data);
+
+      if (!response.meta?.page?.has_next) {
+        break;
+      }
+
+      // Extract cursor from next link
+      const nextUrl = new URL(response.links.next, this.baseUrl);
+      cursor = nextUrl.searchParams.get('page[after]');
+    }
+
+    return allData;
+  }
+}
+
+// Usage
+const client = new ApiClient('http://localhost:4000/api/json', 'YOUR_TOKEN');
+
+// Fetch single page
+const page = await client.fetchPage('users', { limit: 10 });
+console.log(page.data);
+
+// Fetch all pages
+const allUsers = await client.fetchAllPages('users');
+console.log(`Total users: ${allUsers.length}`);
+```
+
+```python Python
+import requests
+from typing import Optional, List, Dict, Any
+from urllib.parse import urlparse, parse_qs
+
+class ApiClient:
+    def __init__(self, base_url: str, token: str):
+        self.base_url = base_url
+        self.token = token
+        self.headers = {
+            'Content-Type': 'application/vnd.api+json',
+            'Accept': 'application/vnd.api+json',
+            'Authorization': f'Bearer {token}'
+        }
+
+    def fetch_page(
+        self,
+        resource: str,
+        limit: int = 25,
+        after: Optional[str] = None,
+        before: Optional[str] = None
+    ) -> Dict[str, Any]:
+        params = {'page[limit]': limit}
+        if after:
+            params['page[after]'] = after
+        if before:
+            params['page[before]'] = before
+
+        url = f"{self.base_url}/{resource}"
+        response = requests.get(url, headers=self.headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def fetch_all_pages(self, resource: str, limit: int = 25) -> List[Dict[str, Any]]:
+        all_data = []
+        cursor = None
+
+        while True:
+            response = self.fetch_page(resource, limit=limit, after=cursor)
+            all_data.extend(response['data'])
+
+            if not response.get('meta', {}).get('page', {}).get('has_next'):
+                break
+
+            # Extract cursor from next link
+            next_url = response['links']['next']
+            parsed = urlparse(next_url)
+            cursor = parse_qs(parsed.query).get('page[after]', [None])[0]
+
+        return all_data
+
+# Usage
+client = ApiClient('http://localhost:4000/api/json', 'YOUR_TOKEN')
+
+# Fetch single page
+page = client.fetch_page('users', limit=10)
+print(f"Page has {len(page['data'])} users")
+
+# Fetch all pages
+all_users = client.fetch_all_pages('users')
+print(f"Total users: {len(all_users)}")
+```
+
+</CodeGroup>
+
+## Best Practices
+
+<Steps>
+  <Step title="Choose Appropriate Page Size">
+    Balance between request overhead and memory usage:
+    - **Small pages (10-25)**: Better for UI pagination
+    - **Large pages (50-100)**: Better for bulk data processing
+    - **Very large pages (100+)**: May cause performance issues
+  </Step>
+
+  <Step title="Cache Cursors">
+    Store the cursors from responses to enable navigation:
+
+    ```javascript
+    const paginationState = {
+      currentCursor: null,
+      nextCursor: response.meta.page.has_next ? extractCursor(response.links.next) : null,
+      prevCursor: response.meta.page.has_prev ? extractCursor(response.links.prev) : null
+    };
+    ```
+  </Step>
+
+  <Step title="Handle Empty Results">
+    Check if the data array is empty:
+
+    ```javascript
+    if (response.data.length === 0) {
+      console.log('No results found');
+    }
+    ```
+  </Step>
+
+  <Step title="Respect Rate Limits">
+    When fetching all pages, add delays between requests to avoid rate limiting:
+
+    ```javascript
+    async function fetchAllWithDelay(client, resource, delayMs = 100) {
+      let allData = [];
+      let cursor = null;
+
+      while (true) {
+        const response = await client.fetchPage(resource, { after: cursor });
+        allData = allData.concat(response.data);
+
+        if (!response.meta?.page?.has_next) break;
+
+        cursor = extractCursor(response.links.next);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      return allData;
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+Do not attempt to modify or decode cursors. They are opaque tokens that may change format between API versions. Always use the cursors exactly as provided in the response.
+</Warning>
+
+## Keyset vs Offset Pagination
+
+| Feature | Keyset (Used by Ash Coffee) | Offset |
+|---------|------------------------------|--------|
+| **Performance** | Consistent, regardless of page depth | Degrades with deeper pages |
+| **Consistency** | Stable, even with data changes | Can skip or duplicate items |
+| **Random access** | No direct page jumping | Can jump to any page |
+| **Use case** | Real-time feeds, infinite scroll | Traditional page-based UIs |
+
+The API uses keyset pagination by default because it provides better performance and consistency for most use cases.

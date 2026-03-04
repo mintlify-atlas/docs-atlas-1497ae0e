@@ -1,0 +1,498 @@
+---
+title: Installation
+description: Complete guide to installing and configuring the Ash Coffee API for development and production
+---
+
+This guide covers everything you need to install, configure, and deploy the Ash Coffee API.
+
+## System requirements
+
+Ensure your system meets these requirements before installation:
+
+### Required software
+
+- **Elixir**: Version 1.15 or later
+- **Erlang/OTP**: Version 24 or later (installed with Elixir)
+- **PostgreSQL**: Version 12 or later
+- **Node.js**: Version 18 or later (for asset compilation)
+
+<Note>
+The Ash Coffee API requires Elixir `~> 1.15` as specified in `mix.exs:8`. Using an older version may cause compilation errors.
+</Note>
+
+### Verify installation
+
+Check your installed versions:
+
+```bash
+elixir --version
+# Erlang/OTP 26 [erts-14.2] [source] [64-bit] [smp:8:8]
+# Elixir 1.15.0 (compiled with Erlang/OTP 26)
+
+psql --version
+# psql (PostgreSQL) 15.3
+
+node --version
+# v18.17.0
+```
+
+## Installation steps
+
+<Steps>
+  <Step title="Clone the repository">
+    Get the source code from your repository:
+
+    ```bash
+    git clone <your-repository-url>
+    cd ash_coffee
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all Elixir and JavaScript dependencies:
+
+    ```bash
+    mix deps.get
+    ```
+
+    This installs the key frameworks:
+    - **Ash Framework** (`~> 3.0`) - Resource-based framework
+    - **AshAuthentication** (`~> 4.0`) - Authentication system
+    - **AshPostgres** (`~> 2.0`) - PostgreSQL data layer
+    - **AshJsonApi** (`~> 1.0`) - JSON:API implementation
+    - **Phoenix** (`~> 1.8.4`) - Web framework
+
+    <Accordion title="View all major dependencies">
+      ```elixir mix.exs
+      {:ash, "~> 3.0"},
+      {:ash_authentication, "~> 4.0"},
+      {:ash_authentication_phoenix, "~> 2.0"},
+      {:ash_postgres, "~> 2.0"},
+      {:ash_json_api, "~> 1.0"},
+      {:ash_phoenix, "~> 2.0"},
+      {:phoenix, "~> 1.8.4"},
+      {:phoenix_ecto, "~> 4.5"},
+      {:ecto_sql, "~> 3.13"},
+      {:postgrex, ">= 0.0.0"},
+      {:bcrypt_elixir, "~> 3.0"},
+      {:bandit, "~> 1.5"}
+      ```
+    </Accordion>
+  </Step>
+
+  <Step title="Configure the database">
+    Update your database configuration in `config/dev.exs`:
+
+    ```elixir config/dev.exs
+    config :ash_coffee, AshCoffee.Repo,
+      username: "postgres",      # Your PostgreSQL username
+      password: "postgres",      # Your PostgreSQL password
+      hostname: "localhost",
+      database: "ash_coffee_dev",
+      stacktrace: true,
+      show_sensitive_data_on_connection_error: true,
+      pool_size: 10
+    ```
+
+    <Info>
+    The default configuration uses `username: "martha_pop"` and `password: "postgres_pop"`. Change these to match your local PostgreSQL setup.
+    </Info>
+  </Step>
+
+  <Step title="Create and migrate the database">
+    Set up the database using Ash commands:
+
+    ```bash
+    mix ash.setup
+    ```
+
+    This command:
+    1. Creates the database if it doesn't exist
+    2. Runs all pending migrations
+    3. Generates Ash resources snapshots
+
+    The database includes two main tables:
+    - `users` - Stores user accounts with email and hashed passwords
+    - `tokens` - Stores JWT tokens for authentication
+  </Step>
+
+  <Step title="Install and build assets">
+    Install and compile CSS and JavaScript assets:
+
+    ```bash
+    mix assets.setup
+    mix assets.build
+    ```
+
+    The asset pipeline uses:
+    - **Tailwind CSS** (v4.1.12) for styling
+    - **esbuild** (v0.25.4) for JavaScript bundling
+  </Step>
+
+  <Step title="Start the server">
+    Launch the development server:
+
+    ```bash
+    mix phx.server
+    ```
+
+    The server will start on `http://localhost:4000` by default.
+
+    <Accordion title="Alternative: Start with IEx">
+      For interactive development with access to the Elixir console:
+
+      ```bash
+      iex -S mix phx.server
+      ```
+
+      This allows you to interact with your application while it's running.
+    </Accordion>
+  </Step>
+</Steps>
+
+## Configuration overview
+
+The Ash Coffee API uses multiple configuration files for different environments.
+
+### Configuration files
+
+<CodeGroup>
+```elixir config/config.exs
+# Application-wide configuration
+config :ash_coffee,
+  ecto_repos: [AshCoffee.Repo],
+  ash_domains: [AshCoffee.Accounts]
+
+# Ash framework configuration
+config :ash,
+  default_page_type: :keyset,
+  policies: [no_filter_static_forbidden_reads?: false]
+
+# JSON:API configuration
+config :mime,
+  extensions: %{"json" => "application/vnd.api+json"},
+  types: %{"application/vnd.api+json" => ["json"]}
+```
+
+```elixir config/dev.exs
+# Development-only configuration
+config :ash_coffee, AshCoffeeWeb.Endpoint,
+  http: [ip: {127, 0, 0, 1}],
+  check_origin: false,
+  code_reloader: true,
+  debug_errors: true
+
+# Development routes (LiveDashboard, mailbox)
+config :ash_coffee,
+  dev_routes: true,
+  token_signing_secret: "pZrbSxFjmtdCEjgiZdVRa5adGoBFDQaO"
+```
+
+```elixir config/runtime.exs
+# Production configuration from environment variables
+if config_env() == :prod do
+  database_url = System.get_env("DATABASE_URL") ||
+    raise "environment variable DATABASE_URL is missing"
+
+  secret_key_base = System.get_env("SECRET_KEY_BASE") ||
+    raise "environment variable SECRET_KEY_BASE is missing"
+
+  config :ash_coffee,
+    token_signing_secret: System.get_env("TOKEN_SIGNING_SECRET") ||
+      raise "Missing environment variable TOKEN_SIGNING_SECRET"
+end
+```
+</CodeGroup>
+
+### Key configuration options
+
+| Option | Location | Description |
+|--------|----------|-------------|
+| `ecto_repos` | `config/config.exs:63` | Database repositories |
+| `ash_domains` | `config/config.exs:65` | Ash domains to load |
+| `token_signing_secret` | `config/dev.exs:72` | Secret for JWT signing |
+| Database credentials | `config/dev.exs:5-12` | PostgreSQL connection |
+| HTTP port | `config/runtime.exs:24` | Server port (default: 4000) |
+
+## Database management
+
+### Mix aliases
+
+The project includes convenient Mix aliases for database operations:
+
+```elixir mix.exs
+aliases: [
+  setup: ["deps.get", "ash.setup", "assets.setup", "assets.build"],
+  "ash.setup": ["ash.create", "ash.migrate"],
+  "ash.reset": ["ash.drop", "ash.setup"],
+  test: ["ash.setup --quiet", "test"]
+]
+```
+
+### Common database commands
+
+<CodeGroup>
+```bash Setup
+# Full setup - creates database, runs migrations, seeds
+mix setup
+```
+
+```bash Reset
+# Drop and recreate the database
+mix ash.reset
+```
+
+```bash Migrate
+# Run pending migrations only
+mix ash.migrate
+```
+
+```bash Generate Migrations
+# Generate migrations from Ash resource changes
+mix ash.codegen
+```
+
+```bash Seeds
+# Run seed data
+mix run priv/repo/seeds.exs
+```
+</CodeGroup>
+
+<Warning>
+The `ash.reset` command **drops all data** in your database. Use with caution!
+</Warning>
+
+## Development vs Production
+
+### Development setup
+
+Development includes additional tools and relaxed security:
+
+- **LiveDashboard**: Real-time metrics at `/dev/dashboard`
+- **Mailbox Preview**: Email preview at `/dev/mailbox`
+- **Code Reloading**: Automatic recompilation on file changes
+- **Debug Errors**: Detailed error pages with stack traces
+- **Hardcoded Secrets**: Convenient but insecure defaults
+
+```bash
+# Start development server with all tools
+mix phx.server
+```
+
+### Production setup
+
+Production requires environment variables and proper configuration:
+
+<Steps>
+  <Step title="Set required environment variables">
+    ```bash
+    export DATABASE_URL="ecto://user:pass@host/database"
+    export SECRET_KEY_BASE="$(mix phx.gen.secret)"
+    export TOKEN_SIGNING_SECRET="$(mix phx.gen.secret)"
+    export PHX_HOST="yourdomain.com"
+    ```
+  </Step>
+
+  <Step title="Create a production release">
+    ```bash
+    MIX_ENV=prod mix release
+    ```
+  </Step>
+
+  <Step title="Run database migrations">
+    ```bash
+    _build/prod/rel/ash_coffee/bin/ash_coffee eval "AshCoffee.Release.migrate"
+    ```
+  </Step>
+
+  <Step title="Start the production server">
+    ```bash
+    PHX_SERVER=true _build/prod/rel/ash_coffee/bin/ash_coffee start
+    ```
+  </Step>
+</Steps>
+
+<Info>
+For detailed production deployment instructions, see the [Phoenix deployment guide](https://hexdocs.pm/phoenix/deployment.html).
+</Info>
+
+## Authentication configuration
+
+The Ash Coffee API uses **AshAuthentication** with the following features:
+
+### Enabled authentication strategies
+
+- **Password Authentication**: Email and password sign in (`lib/ash_coffee/accounts/user.ex:35-45`)
+- **Token Management**: JWT tokens stored in database (`lib/ash_coffee/accounts/user.ex:26-32`)
+- **Email Confirmation**: Optional confirmation flow (`lib/ash_coffee/accounts/user.ex:15-23`)
+- **Password Reset**: Token-based password reset (`lib/ash_coffee/accounts/user.ex:39-44`)
+- **Remember Me**: Long-lived session tokens (`lib/ash_coffee/accounts/user.ex:47`)
+
+### Token configuration
+
+```elixir lib/ash_coffee/accounts/user.ex
+tokens do
+  enabled? true
+  token_resource AshCoffee.Accounts.Token
+  signing_secret AshCoffee.Secrets
+  store_all_tokens? true
+  require_token_presence_for_authentication? true
+end
+```
+
+All tokens are stored in the `tokens` table, allowing for:
+- Token revocation
+- Audit trails
+- Multi-device session management
+- "Sign out everywhere" functionality
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Dependency compilation errors">
+    If dependencies fail to compile:
+
+    ```bash
+    # Clean all dependencies and recompile
+    mix deps.clean --all
+    mix deps.get
+    mix compile
+    ```
+
+    Ensure you're using Elixir 1.15 or later:
+    ```bash
+    elixir --version
+    ```
+  </Accordion>
+
+  <Accordion title="Database migration errors">
+    If migrations fail:
+
+    ```bash
+    # Check if database exists
+    mix ash.create
+
+    # Roll back all migrations and re-run
+    mix ash.reset
+
+    # Generate new migration files from resources
+    mix ash.codegen
+    ```
+
+    Check PostgreSQL logs for permission or connection issues:
+    ```bash
+    tail -f /usr/local/var/log/postgres.log
+    ```
+  </Accordion>
+
+  <Accordion title="Asset compilation errors">
+    If assets fail to build:
+
+    ```bash
+    # Clean asset cache
+    rm -rf priv/static/assets
+
+    # Reinstall asset tools
+    mix assets.setup
+    mix assets.build
+    ```
+
+    Ensure Node.js is installed:
+    ```bash
+    node --version
+    npm --version
+    ```
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    If port 4000 is already in use:
+
+    ```bash
+    # Start on a different port
+    PORT=4001 mix phx.server
+    ```
+
+    Or find and kill the process using port 4000:
+    ```bash
+    lsof -ti:4000 | xargs kill -9
+    ```
+  </Accordion>
+
+  <Accordion title="Connection to PostgreSQL refused">
+    If you see connection refused errors:
+
+    1. Verify PostgreSQL is running:
+       ```bash
+       # macOS with Homebrew
+       brew services start postgresql@15
+
+       # Linux with systemd
+       sudo systemctl start postgresql
+
+       # Check status
+       pg_isready
+       ```
+
+    2. Verify connection settings in `config/dev.exs`
+
+    3. Test connection manually:
+       ```bash
+       psql -U postgres -h localhost -d postgres
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Running tests
+
+The test suite uses a separate test database:
+
+```bash
+# Run all tests
+mix test
+
+# Run a specific test file
+mix test test/ash_coffee/accounts_test.exs
+
+# Run tests with detailed output
+mix test --trace
+```
+
+The test setup automatically runs before tests (configured in `mix.exs:95`):
+```elixir
+test: ["ash.setup --quiet", "test"]
+```
+
+## Pre-commit checks
+
+Run quality checks before committing:
+
+```bash
+mix precommit
+```
+
+This runs (configured in `mix.exs:103`):
+1. Compilation with warnings as errors
+2. Unused dependency cleanup
+3. Code formatting
+4. Full test suite
+
+<Info>
+Consider setting up a Git pre-commit hook to run `mix precommit` automatically.
+</Info>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Make your first API call and test authentication
+  </Card>
+  <Card title="Authentication" icon="shield-halved" href="/authentication/overview">
+    Deep dive into authentication strategies
+  </Card>
+  <Card title="Development Setup" icon="sliders" href="/guides/development-setup">
+    Set up your development environment
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/auth/register">
+    Explore all available endpoints
+  </Card>
+</CardGroup>

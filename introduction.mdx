@@ -1,0 +1,317 @@
+---
+title: Welcome to Ash Coffee API
+description: A modern authentication API built with Phoenix and the Ash Framework
+mode: custom
+---
+
+<div className="relative overflow-hidden bg-gradient-to-br from-[#6F4E37] via-[#5a3e2d] to-[#4A3326] dark:from-[#6F4E37] dark:via-[#5a3e2d] dark:to-[#4A3326] py-20">
+  <div className="max-w-6xl mx-auto px-6 sm:px-8">
+    <div className="grid lg:grid-cols-12 gap-12 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          Ash Coffee API Documentation
+        </h1>
+        <p className="text-lg sm:text-xl text-gray-100 mb-8 max-w-2xl">
+          Build secure authentication flows with a declarative, resource-based API powered by Phoenix and the Ash Framework. Get started in minutes with JWT tokens, password authentication, magic links, and more.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#6F4E37] font-semibold hover:bg-gray-100 transition-colors no-underline"
+          >
+            Get Started
+            <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </a>
+          <a
+            href="/api/auth/register"
+            className="inline-flex items-center px-6 py-3 rounded-lg border-2 border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors no-underline"
+          >
+            API Reference
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-[#6F4E37]/20 to-transparent rounded-lg blur-xl"></div>
+          <div className="relative bg-[#1a1d27] dark:bg-[#1a1d27] rounded-xl p-6 border border-white/10">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <pre className="text-sm text-gray-300 overflow-x-auto">
+              <code>{`POST /api/json/auth/register
+Content-Type: application/vnd.api+json
+
+{
+  "data": {
+    "type": "user",
+    "attributes": {
+      "email": "user@example.com",
+      "password": "secure_password"
+    }
+  }
+}`}</code>
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Quick Start
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get your authentication API up and running in four simple steps.
+  </p>
+
+  <Steps>
+    <Step title="Clone and set up the project">
+      Clone the repository and install dependencies:
+
+      ```bash
+      git clone https://github.com/MmmarRTha/backend_ash_coffee.git
+      cd backend_ash_coffee
+      mix setup
+      ```
+
+      This installs all dependencies, creates the database, runs migrations, and seeds initial data.
+    </Step>
+
+    <Step title="Configure environment variables">
+      Create a `.env` file or set the required environment variables:
+
+      ```bash
+      export DATABASE_URL="postgresql://user:password@localhost/ash_coffee_dev"
+      export SECRET_KEY_BASE="your-secret-key-base"
+      ```
+
+      Generate a secret key base with:
+
+      ```bash
+      mix phx.gen.secret
+      ```
+    </Step>
+
+    <Step title="Start the Phoenix server">
+      Launch the development server:
+
+      ```bash
+      mix phx.server
+      ```
+
+      The API will be available at `http://localhost:4000`. The OpenAPI documentation is accessible at `http://localhost:4000/api/json/swaggerui`.
+    </Step>
+
+    <Step title="Register your first user">
+      Make your first API request to register a new user:
+
+      ```bash
+      curl -X POST http://localhost:4000/api/json/auth/register \
+        -H "Content-Type: application/vnd.api+json" \
+        -d '{
+          "data": {
+            "type": "user",
+            "attributes": {
+              "email": "test@example.com",
+              "password": "secure_password_123",
+              "password_confirmation": "secure_password_123"
+            }
+          }
+        }'
+      ```
+
+      <Accordion title="Example Response">
+        ```json
+        {
+          "data": {
+            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "type": "user",
+            "attributes": {
+              "email": "test@example.com",
+              "confirmed_at": null
+            },
+            "meta": {
+              "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            }
+          }
+        }
+        ```
+      </Accordion>
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Explore by Topic
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Dive into specific areas of the Ash Coffee API.
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="Authentication Strategies" icon="shield-halved" href="/authentication/overview">
+      Learn about password authentication, magic links, remember me tokens, and email confirmation.
+    </Card>
+    <Card title="Core Concepts" icon="brain" href="/concepts/ash-framework">
+      Understand the Ash Framework, resources, domains, and actions that power this API.
+    </Card>
+    <Card title="Making Requests" icon="code" href="/guides/making-requests">
+      Discover how to authenticate requests, handle responses, and work with JSON:API format.
+    </Card>
+    <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+      Learn about error response formats, status codes, and how to handle validation errors.
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Key Features
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Everything you need to build secure authentication flows.
+  </p>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Multiple Auth Strategies</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Support for password authentication, magic links, and remember me tokens out of the box.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">JWT Token Authentication</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Secure, stateless authentication with JSON Web Tokens for seamless API access.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Email Confirmation</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Built-in email verification workflow to ensure valid user registrations.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">JSON:API Compliant</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Standards-based REST API following JSON:API specification for consistency.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">OpenAPI Documentation</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Interactive Swagger UI for exploring and testing API endpoints in your browser.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-lg bg-gray-50 dark:bg-[#1a1d27] border border-gray-200 dark:border-[#27272a]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-lg bg-[#6F4E37]/10 dark:bg-[#6F4E37]/20 flex items-center justify-center">
+          <svg className="w-5 h-5 text-[#6F4E37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">PostgreSQL Powered</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Reliable data persistence with PostgreSQL through AshPostgres integration.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    API Resources
+  </h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Explore the available API endpoints and resources.
+  </p>
+
+  <CardGroup cols={3}>
+    <Card title="Register User" icon="user-plus" href="/api/auth/register">
+      Create a new user account
+    </Card>
+    <Card title="Sign In" icon="right-to-bracket" href="/api/auth/sign-in">
+      Authenticate with credentials
+    </Card>
+    <Card title="Password Reset" icon="key" href="/api/auth/password-reset">
+      Request password reset token
+    </Card>
+    <Card title="Magic Link" icon="envelope" href="/api/auth/magic-link">
+      Passwordless authentication
+    </Card>
+    <Card title="Get User" icon="user" href="/api/users/get-user">
+      Retrieve user information
+    </Card>
+    <Card title="Change Password" icon="lock" href="/api/users/change-password">
+      Update user password
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-br from-[#6F4E37] to-[#4A3326] dark:from-[#6F4E37] dark:to-[#4A3326] p-8 sm:p-12 text-center">
+    <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">
+      Ready to Get Started?
+    </h2>
+    <p className="text-lg text-gray-100 mb-8 max-w-2xl mx-auto">
+      Follow our quickstart guide to set up your authentication API in minutes and start building secure applications.
+    </p>
+    <a
+      href="/quickstart"
+      className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#6F4E37] font-semibold hover:bg-gray-100 transition-colors no-underline"
+    >
+      Start Building Now
+      <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+      </svg>
+    </a>
+  </div>
+</div>

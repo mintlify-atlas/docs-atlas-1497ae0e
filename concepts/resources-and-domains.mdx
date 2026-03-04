@@ -1,0 +1,333 @@
+---
+title: Resources and Domains
+description: Understand how Ash resources and domains organize the Ash Coffee API's data models and business logic.
+---
+
+## What are resources?
+
+In Ash Framework, a **resource** is a declarative definition of a domain entity. Rather than writing scattered business logic across multiple files, you define everything about an entity in one place:
+
+- What data it stores (attributes)
+- How it relates to other entities (relationships)
+- What you can do with it (actions)
+- Who can do what (policies)
+- How it's uniquely identified (identities)
+
+Let's explore the two main resources in Ash Coffee: `User` and `Token`.
+
+## The User resource
+
+The `User` resource represents authenticated users in the system. Here's its structure:
+
+```elixir lib/ash_coffee/accounts/user.ex
+defmodule AshCoffee.Accounts.User do
+  use Ash.Resource,
+    otp_app: :ash_coffee,
+    domain: AshCoffee.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshAuthentication]
+end
+```
+
+### Resource configuration
+
+Let's break down what each option means:
+
+- **`otp_app`** - The OTP application name, used to load configuration
+- **`domain`** - Which domain this resource belongs to (more on this below)
+- **`data_layer`** - How data is persisted (`AshPostgres` for PostgreSQL)
+- **`authorizers`** - Which authorization system to use
+- **`extensions`** - Additional functionality (authentication, JSON:API, etc.)
+
+### Attributes
+
+Attributes define the data fields of your resource:
+
+```elixir lib/ash_coffee/accounts/user.ex
+attributes do
+  uuid_primary_key :id
+
+  attribute :email, :ci_string do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :hashed_password, :string do
+    allow_nil? false
+    sensitive? true
+  end
+
+  attribute :confirmed_at, :utc_datetime_usec
+end
+```
+
+<Note>
+The `:ci_string` type is a case-insensitive string - perfect for email addresses. Users can sign in with "user@EXAMPLE.com" or "USER@example.com" and it will match.
+</Note>
+
+Key attribute options:
+
+- **`allow_nil?`** - Whether the field can be null (default: `true`)
+- **`public?`** - Whether the field can be set directly by users (default: `false`)
+- **`sensitive?`** - Marks sensitive data that shouldn't be logged or displayed
+
+### Identities
+
+Identities define unique constraints on your resource:
+
+```elixir lib/ash_coffee/accounts/user.ex
+identities do
+  identity :unique_email, [:email]
+end
+```
+
+This creates a database unique constraint on the `email` field, preventing duplicate registrations. When a constraint violation occurs, Ash automatically returns a user-friendly error.
+
+### Policies
+
+Policies control authorization:
+
+```elixir lib/ash_coffee/accounts/user.ex
+policies do
+  bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+    authorize_if always()
+  end
+end
+```
+
+This policy allows the `AshAuthentication` extension to interact with the User resource for sign-in, registration, etc. Without this policy, even authentication actions would be denied.
+
+<Info>
+Ash uses a "secure by default" approach - all actions are denied unless explicitly authorized by a policy.
+</Info>
+
+### Data layer configuration
+
+For PostgreSQL resources, you specify the table name and repository:
+
+```elixir lib/ash_coffee/accounts/user.ex
+postgres do
+  table "users"
+  repo AshCoffee.Repo
+end
+```
+
+## The Token resource
+
+The `Token` resource stores authentication tokens (JWTs) for features like "remember me" and token revocation:
+
+```elixir lib/ash_coffee/accounts/token.ex
+defmodule AshCoffee.Accounts.Token do
+  use Ash.Resource,
+    otp_app: :ash_coffee,
+    domain: AshCoffee.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshAuthentication.TokenResource]
+end
+```
+
+### Token attributes
+
+```elixir lib/ash_coffee/accounts/token.ex
+attributes do
+  attribute :jti, :string do
+    primary_key? true
+    public? true
+    allow_nil? false
+    sensitive? true
+  end
+
+  attribute :subject, :string do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :expires_at, :utc_datetime do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :purpose, :string do
+    allow_nil? false
+    public? true
+  end
+
+  attribute :extra_data, :map do
+    public? true
+  end
+
+  create_timestamp :created_at
+  update_timestamp :updated_at
+end
+```
+
+Key fields:
+
+- **`jti`** - JWT ID, a unique identifier for each token (used as primary key)
+- **`subject`** - The user ID this token belongs to
+- **`expires_at`** - When the token becomes invalid
+- **`purpose`** - What the token is for ("sign_in", "remember_me", "password_reset", etc.)
+- **`extra_data`** - Additional metadata stored as a JSON map
+
+<Tip>
+The Token resource uses the `AshAuthentication.TokenResource` extension, which provides pre-built actions for storing, revoking, and validating tokens.
+</Tip>
+
+## What are domains?
+
+A **domain** is a collection of related resources. It serves as:
+
+1. The public API for interacting with resources
+2. A namespace for organizing resources
+3. A boundary for configuration and extensions
+
+In Ash Coffee, the `AshCoffee.Accounts` domain groups all authentication-related resources:
+
+```elixir lib/ash_coffee/accounts.ex
+defmodule AshCoffee.Accounts do
+  use Ash.Domain,
+    otp_app: :ash_coffee
+
+  resources do
+    resource AshCoffee.Accounts.Token
+    resource AshCoffee.Accounts.User
+  end
+end
+```
+
+### Using domains
+
+Instead of calling resources directly, you interact with them through the domain:
+
+```elixir
+# Create a user via the Accounts domain
+Ash.create(AshCoffee.Accounts.User, :register_with_password, %{
+  email: "user@example.com",
+  password: "securepass123",
+  password_confirmation: "securepass123"
+})
+
+# Query users via the domain
+Ash.read(AshCoffee.Accounts.User, :read)
+
+# Get a specific user by email
+Ash.get(AshCoffee.Accounts.User, :get_by_email, %{email: "user@example.com"})
+```
+
+<Note>
+Though the domain is specified when defining resources, you still need to pass the full resource module (`AshCoffee.Accounts.User`) when calling Ash functions.
+</Note>
+
+## How resources are organized in domains
+
+Domains follow a file structure that mirrors your application's business domains:
+
+```
+lib/
+└── ash_coffee/
+    ├── accounts.ex              # The Accounts domain
+    └── accounts/
+        ├── user.ex              # User resource
+        ├── token.ex             # Token resource
+        └── user/
+            └── senders/
+                ├── send_password_reset_email.ex
+                └── send_new_user_confirmation_email.ex
+```
+
+### Organizing larger applications
+
+As your application grows, you might add additional domains:
+
+```elixir
+# Future domains for Ash Coffee
+defmodule AshCoffee.Products do
+  use Ash.Domain
+  
+  resources do
+    resource AshCoffee.Products.Coffee
+    resource AshCoffee.Products.Category
+  end
+end
+
+defmodule AshCoffee.Orders do
+  use Ash.Domain
+  
+  resources do
+    resource AshCoffee.Orders.Order
+    resource AshCoffee.Orders.LineItem
+  end
+end
+```
+
+## Real-world example: Creating a user
+
+Here's what happens when you create a user:
+
+```elixir
+# 1. Call the domain with the resource, action, and input
+result = Ash.create(AshCoffee.Accounts.User, :register_with_password, %{
+  email: "coffee@example.com",
+  password: "brewmaster2024",
+  password_confirmation: "brewmaster2024"
+})
+
+# 2. Ash validates the input arguments
+# 3. Runs any validations (e.g., password matches confirmation)
+# 4. Executes changes (e.g., hashes the password)
+# 5. Checks policies (authorization)
+# 6. Persists to the database
+# 7. Returns the result
+
+case result do
+  {:ok, user} -> 
+    # User created successfully
+    IO.puts("Welcome, #{user.email}!")
+  
+  {:error, changeset} -> 
+    # Validation errors occurred
+    IO.inspect(changeset.errors)
+end
+```
+
+<Accordion title="What's a changeset?">
+A changeset is Ash's way of tracking changes and validation errors. When an action fails, you get a changeset with detailed error information:
+
+```elixir
+%Ash.Changeset{
+  errors: [
+    %Ash.Error.Changes.InvalidAttribute{
+      field: :email,
+      message: "has already been taken"
+    }
+  ]
+}
+```
+</Accordion>
+
+## Benefits of the resource + domain pattern
+
+### Colocation
+Everything about a User - its data, actions, and policies - lives in one file.
+
+### Testability
+Test resources directly without HTTP requests or database setup (using Ash's in-memory data layer in tests).
+
+### Reusability
+The same User resource can be exposed via JSON:API, GraphQL, or used in LiveViews - no duplication.
+
+### Maintainability
+When you need to add a field, you update one place. When you need to add a policy, you update one place.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Actions" icon="bolt" href="/concepts/actions">
+    Learn how to define and use actions on resources
+  </Card>
+  <Card title="Authentication Overview" icon="shield" href="/authentication/overview">
+    See how authentication is built on top of resources
+  </Card>
+</CardGroup>

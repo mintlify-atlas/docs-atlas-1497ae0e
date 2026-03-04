@@ -1,0 +1,272 @@
+---
+title: Sign in
+description: Authenticate a user with email and password
+---
+
+## Endpoint
+
+```
+POST /api/json/sign-in
+```
+
+Authenticate an existing user with their email and password. Returns a JWT token upon successful authentication.
+
+## Request
+
+### Headers
+
+<ParamField header="Content-Type" type="string" required>
+  Must be `application/vnd.api+json`
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="data" type="object" required>
+  The request data object
+  
+  <Expandable title="properties">
+    <ParamField body="type" type="string" required>
+      Must be `"user"`
+    </ParamField>
+    
+    <ParamField body="attributes" type="object" required>
+      Authentication credentials
+      
+      <Expandable title="properties">
+        <ParamField body="email" type="string" required>
+          User's email address (case-insensitive)
+        </ParamField>
+        
+        <ParamField body="password" type="string" required>
+          User's password in plain text
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Response
+
+### Success Response (200 OK)
+
+<ResponseField name="data" type="object">
+  The authenticated user resource
+  
+  <Expandable title="properties">
+    <ResponseField name="id" type="string">
+      Unique user identifier (UUID)
+    </ResponseField>
+    
+    <ResponseField name="type" type="string">
+      Resource type: `"user"`
+    </ResponseField>
+    
+    <ResponseField name="attributes" type="object">
+      User attributes
+      
+      <Expandable title="properties">
+        <ResponseField name="email" type="string">
+          User's email address
+        </ResponseField>
+        
+        <ResponseField name="confirmed_at" type="string | null">
+          Email confirmation timestamp (ISO 8601). `null` if not yet confirmed.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="meta" type="object">
+      Response metadata
+      
+      <Expandable title="properties">
+        <ResponseField name="token" type="string">
+          JWT authentication token for subsequent requests
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error Responses
+
+<Accordion title="401 Unauthorized - Invalid Credentials">
+  ```json
+  {
+    "errors": [
+      {
+        "status": "401",
+        "title": "Unauthorized",
+        "detail": "Invalid email or password"
+      }
+    ]
+  }
+  ```
+  
+  This error is returned when:
+  - The email doesn't exist in the system
+  - The password is incorrect
+  - The account has been deactivated
+</Accordion>
+
+<Accordion title="400 Bad Request - Invalid Format">
+  ```json
+  {
+    "errors": [
+      {
+        "status": "400",
+        "title": "Bad Request",
+        "detail": "Invalid JSON:API request format"
+      }
+    ]
+  }
+  ```
+</Accordion>
+
+## Examples
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.example.com/api/json/sign-in \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "user",
+      "attributes": {
+        "email": "user@example.com",
+        "password": "secure_password_123"
+      }
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.example.com/api/json/sign-in', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/vnd.api+json',
+  },
+  body: JSON.stringify({
+    data: {
+      type: 'user',
+      attributes: {
+        email: 'user@example.com',
+        password: 'secure_password_123'
+      }
+    }
+  })
+});
+
+if (!response.ok) {
+  const error = await response.json();
+  throw new Error(error.errors[0].detail);
+}
+
+const result = await response.json();
+const token = result.data.meta.token;
+
+// Store token for authenticated requests
+localStorage.setItem('authToken', token);
+console.log('Signed in successfully');
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.example.com/api/json/sign-in',
+    headers={'Content-Type': 'application/vnd.api+json'},
+    json={
+        'data': {
+            'type': 'user',
+            'attributes': {
+                'email': 'user@example.com',
+                'password': 'secure_password_123'
+            }
+        }
+    }
+)
+
+if response.status_code == 200:
+    result = response.json()
+    token = result['data']['meta']['token']
+    print(f"Signed in successfully. Token: {token}")
+else:
+    error = response.json()
+    print(f"Error: {error['errors'][0]['detail']}")
+```
+</CodeGroup>
+
+### Success Response Example
+
+```json
+{
+  "data": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "type": "user",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": "2024-03-01T12:00:00.000000Z"
+    },
+    "meta": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJleHAiOjE3MDkzMTg0MDB9.signature"
+    }
+  }
+}
+```
+
+## Using the Token
+
+After successful sign-in, include the token in the `Authorization` header for all authenticated requests:
+
+```bash
+curl -X GET https://api.example.com/api/json/users/me \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+<Info>
+Tokens are stored in the database and can be revoked at any time. See [Token Management](/authentication/tokens) for details on token lifecycle and security.
+</Info>
+
+## Sign In Flow
+
+<Steps>
+  <Step title="User enters credentials">
+    User provides their email and password through your application's sign-in form.
+  </Step>
+  
+  <Step title="Validate credentials">
+    The API validates the email exists and the password matches the stored hash using bcrypt.
+  </Step>
+  
+  <Step title="Generate JWT token">
+    Upon successful validation, a new JWT token is generated with the user's ID and expiration time.
+  </Step>
+  
+  <Step title="Store token in database">
+    The token is stored in the database for validation and revocation purposes.
+  </Step>
+  
+  <Step title="Return token to client">
+    The token is returned in the response metadata for the client to use in subsequent requests.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Using Tokens" icon="key" href="/authentication/tokens">
+    Learn how to use JWT tokens in API requests
+  </Card>
+  
+  <Card title="Password Reset" icon="lock-keyhole" href="/api/auth/password-reset">
+    Help users recover their accounts
+  </Card>
+  
+  <Card title="Sign Out" icon="right-from-bracket" href="/api/auth/sign-out">
+    Revoke user sessions
+  </Card>
+  
+  <Card title="Magic Links" icon="envelope" href="/api/auth/magic-link">
+    Passwordless authentication alternative
+  </Card>
+</CardGroup>

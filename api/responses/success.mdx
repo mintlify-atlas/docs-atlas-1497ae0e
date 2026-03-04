@@ -1,0 +1,500 @@
+---
+title: Success Responses
+description: Understanding successful response formats in the Ash Coffee API
+---
+
+## Overview
+
+The Ash Coffee API follows the [JSON:API specification](https://jsonapi.org/format/) for successful responses. All successful responses use the `application/vnd.api+json` content type and include a `data` object containing the resource(s) being returned.
+
+## Success Response Format
+
+Successful responses (HTTP status codes `200`, `201`, `204`) follow this general structure:
+
+```json
+{
+  "data": {
+    "type": "user",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": null
+    },
+    "meta": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+  }
+}
+```
+
+### Response Structure
+
+<ResponseField name="data" type="object | array" required>
+  The primary data for the response. Contains either a single resource object or an array of resource objects.
+  
+  <Expandable title="Resource object properties">
+    <ResponseField name="type" type="string" required>
+      The resource type (e.g., "user", "token"). This identifies the type of resource being returned.
+    </ResponseField>
+    
+    <ResponseField name="id" type="string" required>
+      The unique identifier for this resource. Typically a UUID.
+    </ResponseField>
+    
+    <ResponseField name="attributes" type="object" required>
+      An object containing the resource's attributes. Keys are attribute names, values are the attribute data.
+    </ResponseField>
+    
+    <ResponseField name="relationships" type="object">
+      An object describing relationships to other resources.
+    </ResponseField>
+    
+    <ResponseField name="meta" type="object">
+      Non-standard metadata specific to the resource (e.g., authentication tokens).
+    </ResponseField>
+    
+    <ResponseField name="links" type="object">
+      Links related to the resource.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="included" type="array">
+  An array of resource objects that are related to the primary data. Used when relationships are included in the response.
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Top-level metadata about the response (e.g., pagination information, totals).
+</ResponseField>
+
+<ResponseField name="links" type="object">
+  Top-level links (e.g., pagination links for collections).
+</ResponseField>
+
+## Response Types
+
+### Single Resource Response
+
+When requesting a single resource, the `data` field contains a single resource object.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": {
+    "type": "user",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": "2024-03-04T10:30:00.000000Z"
+    }
+  }
+}
+```
+
+```bash Request Example
+curl -X GET http://localhost:4000/api/json/users/me \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+</CodeGroup>
+
+### Collection Response
+
+When requesting a collection of resources, the `data` field contains an array of resource objects.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": [
+    {
+      "type": "user",
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "attributes": {
+        "email": "user1@example.com",
+        "confirmed_at": "2024-03-04T10:30:00.000000Z"
+      }
+    },
+    {
+      "type": "user",
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "attributes": {
+        "email": "user2@example.com",
+        "confirmed_at": "2024-03-03T15:45:00.000000Z"
+      }
+    }
+  ],
+  "meta": {
+    "total_count": 2
+  },
+  "links": {
+    "self": "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=0",
+    "next": null,
+    "prev": null
+  }
+}
+```
+
+```bash Request Example
+curl -X GET "http://localhost:4000/api/json/users?page[limit]=20" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+</CodeGroup>
+
+### Registration Response with Token
+
+When creating a new user, the response includes the user resource and an authentication token in the `meta` field.
+
+<CodeGroup>
+```json Response (201)
+{
+  "data": {
+    "type": "user",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "attributes": {
+      "email": "newuser@example.com",
+      "confirmed_at": null
+    },
+    "meta": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJleHAiOjE3MDk2MzQwMDB9.signature"
+    }
+  }
+}
+```
+
+```bash Request Example
+curl -X POST http://localhost:4000/api/json/auth/register \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "user",
+      "attributes": {
+        "email": "newuser@example.com",
+        "password": "secure_password_123",
+        "password_confirmation": "secure_password_123"
+      }
+    }
+  }'
+```
+</CodeGroup>
+
+### Sign In Response with Token
+
+Successful authentication returns the user resource with a JWT token for subsequent requests.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": {
+    "type": "user",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": "2024-03-04T10:30:00.000000Z"
+    },
+    "meta": {
+      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMWIyYzNkNC1lNWY2LTc4OTAtYWJjZC1lZjEyMzQ1Njc4OTAiLCJleHAiOjE3MDk2MzQwMDB9.signature"
+    }
+  }
+}
+```
+
+```bash Request Example
+curl -X POST http://localhost:4000/api/json/auth/sign_in \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "user",
+      "attributes": {
+        "email": "user@example.com",
+        "password": "secure_password_123"
+      }
+    }
+  }'
+```
+</CodeGroup>
+
+### Password Reset Request Response
+
+When requesting a password reset, the API returns a success response without sensitive data.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": {
+    "type": "password_reset",
+    "attributes": {
+      "message": "If an account exists for this email, you will receive password reset instructions."
+    }
+  }
+}
+```
+
+```bash Request Example
+curl -X POST http://localhost:4000/api/json/auth/password_reset \
+  -H "Content-Type: application/vnd.api+json" \
+  -d '{
+    "data": {
+      "type": "password_reset",
+      "attributes": {
+        "email": "user@example.com"
+      }
+    }
+  }'
+```
+</CodeGroup>
+
+### Empty Success Response
+
+Some operations (like sign out or delete) return a `204 No Content` status with no response body.
+
+<CodeGroup>
+```text Response (204)
+(Empty response body)
+```
+
+```bash Request Example
+curl -X POST http://localhost:4000/api/json/auth/sign_out \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+</CodeGroup>
+
+## Response with Relationships
+
+When resources have relationships to other resources, they can be included in the response using the `included` field.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": {
+    "type": "user",
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "attributes": {
+      "email": "user@example.com",
+      "confirmed_at": "2024-03-04T10:30:00.000000Z"
+    },
+    "relationships": {
+      "tokens": {
+        "data": [
+          {
+            "type": "token",
+            "id": "token-uuid-1"
+          },
+          {
+            "type": "token",
+            "id": "token-uuid-2"
+          }
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "type": "token",
+      "id": "token-uuid-1",
+      "attributes": {
+        "purpose": "user",
+        "expires_at": "2024-03-05T10:30:00.000000Z"
+      }
+    },
+    {
+      "type": "token",
+      "id": "token-uuid-2",
+      "attributes": {
+        "purpose": "remember_me",
+        "expires_at": "2024-04-04T10:30:00.000000Z"
+      }
+    }
+  ]
+}
+```
+
+```bash Request Example
+curl -X GET "http://localhost:4000/api/json/users/me?include=tokens" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+</CodeGroup>
+
+## Pagination Metadata
+
+Collection responses include pagination information in the `meta` and `links` fields.
+
+<CodeGroup>
+```json Response (200)
+{
+  "data": [
+    {
+      "type": "user",
+      "id": "user-1",
+      "attributes": {
+        "email": "user1@example.com"
+      }
+    }
+  ],
+  "meta": {
+    "total_count": 50,
+    "page": {
+      "limit": 20,
+      "offset": 0
+    }
+  },
+  "links": {
+    "self": "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=0",
+    "next": "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=20",
+    "prev": null,
+    "first": "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=0",
+    "last": "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=40"
+  }
+}
+```
+
+```bash Request Example
+curl -X GET "http://localhost:4000/api/json/users?page[limit]=20&page[offset]=0" \
+  -H "Content-Type: application/vnd.api+json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+</CodeGroup>
+
+## HTTP Status Codes
+
+Successful responses use the following HTTP status codes:
+
+| Status Code | Description | When Used |
+|-------------|-------------|----------|
+| `200` | OK | Successful GET, PATCH, or POST request that returns data |
+| `201` | Created | Resource successfully created (e.g., user registration) |
+| `204` | No Content | Successful request with no response body (e.g., sign out, delete) |
+
+## Best Practices
+
+<Accordion title="Extract and Store Authentication Tokens">
+  After successful registration or sign in, extract the JWT token from `data.meta.token` and store it securely for subsequent requests.
+  
+  ```javascript
+  const response = await fetch('/api/json/auth/sign_in', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.api+json' },
+    body: JSON.stringify(credentials)
+  });
+  
+  if (response.ok) {
+    const { data } = await response.json();
+    const token = data.meta.token;
+    
+    // Store token securely (e.g., httpOnly cookie or secure storage)
+    localStorage.setItem('auth_token', token);
+    
+    // Use token in subsequent requests
+    const headers = {
+      'Content-Type': 'application/vnd.api+json',
+      'Authorization': `Bearer ${token}`
+    };
+  }
+  ```
+</Accordion>
+
+<Accordion title="Handle Empty Responses">
+  Check for `204 No Content` responses which don't have a response body.
+  
+  ```javascript
+  const response = await fetch('/api/json/auth/sign_out', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/vnd.api+json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  if (response.status === 204) {
+    // Success with no content
+    console.log('Signed out successfully');
+    localStorage.removeItem('auth_token');
+  }
+  ```
+</Accordion>
+
+<Accordion title="Access Resource Attributes">
+  Resource attributes are nested within the `attributes` object. Access them accordingly.
+  
+  ```javascript
+  const { data } = await response.json();
+  
+  // Single resource
+  const userEmail = data.attributes.email;
+  const userId = data.id;
+  
+  // Collection
+  const users = data.map(user => ({
+    id: user.id,
+    email: user.attributes.email,
+    confirmedAt: user.attributes.confirmed_at
+  }));
+  ```
+</Accordion>
+
+<Accordion title="Use Pagination Links">
+  For paginated collections, use the provided `links` for navigation instead of manually constructing URLs.
+  
+  ```javascript
+  async function fetchAllUsers() {
+    let url = '/api/json/users?page[limit]=50';
+    const allUsers = [];
+    
+    while (url) {
+      const response = await fetch(url, { headers });
+      const json = await response.json();
+      
+      allUsers.push(...json.data);
+      
+      // Use the next link from the response
+      url = json.links?.next;
+    }
+    
+    return allUsers;
+  }
+  ```
+</Accordion>
+
+<Accordion title="Handle Relationships">
+  When relationships are included, process both the primary data and the included resources.
+  
+  ```javascript
+  const { data, included } = await response.json();
+  
+  // Build a lookup map for included resources
+  const includedMap = {};
+  included?.forEach(resource => {
+    const key = `${resource.type}-${resource.id}`;
+    includedMap[key] = resource.attributes;
+  });
+  
+  // Hydrate relationships
+  const tokensData = data.relationships.tokens.data;
+  const tokens = tokensData.map(ref => {
+    const key = `${ref.type}-${ref.id}`;
+    return {
+      id: ref.id,
+      ...includedMap[key]
+    };
+  });
+  ```
+</Accordion>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="Error Responses" icon="exclamation-triangle" href="/api/responses/errors">
+    Learn about error response formats
+  </Card>
+  <Card title="Pagination Guide" icon="arrows-left-right" href="/guides/pagination">
+    Working with paginated collections
+  </Card>
+  <Card title="Making Requests" icon="code" href="/guides/making-requests">
+    Best practices for API requests
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication/overview">
+    Authentication and token management
+  </Card>
+</CardGroup>

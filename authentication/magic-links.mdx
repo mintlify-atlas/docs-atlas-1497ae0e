@@ -1,0 +1,395 @@
+---
+title: 'Magic Link Authentication'
+description: 'Passwordless authentication using secure email magic links'
+---
+
+## Overview
+
+Magic link authentication provides a passwordless sign-in experience. Users receive a unique, time-limited link via email that logs them in when clicked. This eliminates the need for passwords while maintaining strong security.
+
+<Note>
+  Magic links automatically confirm the user's email address on first use, eliminating the need for a separate confirmation step.
+</Note>
+
+## How Magic Links Work
+
+Magic links in Ash Coffee API follow a simple flow:
+
+<Steps>
+  <Step title="User Requests Magic Link">
+    User enters their email address to request a magic link
+  </Step>
+  
+  <Step title="Generate Secure Token">
+    The API generates a cryptographically secure token
+  </Step>
+  
+  <Step title="Send Email">
+    An email containing the magic link is sent to the user
+  </Step>
+  
+  <Step title="User Clicks Link">
+    User clicks the link in their email
+  </Step>
+  
+  <Step title="Verify and Authenticate">
+    The API verifies the token and signs the user in, returning a JWT
+  </Step>
+</Steps>
+
+## Magic Link Configuration
+
+From the router configuration (`lib/ash_coffee_web/router.ex`):
+
+```elixir
+magic_sign_in_route(AshCoffee.Accounts.User, :magic_link,
+  auth_routes_prefix: "/auth",
+  overrides: [AshCoffeeWeb.AuthOverrides, AshAuthentication.Phoenix.Overrides.DaisyUI]
+)
+```
+
+The magic link strategy is referenced in the auto-confirm actions:
+
+```elixir
+confirmation :confirm_new_user do
+  monitor_fields [:email]
+  confirm_on_create? true
+  confirm_on_update? false
+  require_interaction? true
+  confirmed_at_field :confirmed_at
+  auto_confirm_actions [:sign_in_with_magic_link, :reset_password_with_token]
+  sender AshCoffee.Accounts.User.Senders.SendNewUserConfirmationEmail
+end
+```
+
+<Info>
+  The `:sign_in_with_magic_link` action is listed in `auto_confirm_actions`, meaning users who sign in via magic link automatically have their email confirmed.
+</Info>
+
+## Requesting a Magic Link
+
+### API Request
+
+<CodeGroup>
+```bash cURL
+curl -X POST https://api.ashcoffee.dev/auth/user/magic_link \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user": {
+      "email": "user@example.com"
+    }
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('https://api.ashcoffee.dev/auth/user/magic_link', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    user: {
+      email: 'user@example.com'
+    }
+  })
+});
+
+if (response.ok) {
+  console.log('Magic link sent! Check your email.');
+}
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'https://api.ashcoffee.dev/auth/user/magic_link',
+    json={
+        'user': {
+            'email': 'user@example.com'
+        }
+    }
+)
+
+if response.ok:
+    print('Magic link sent! Check your email.')
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "If your email address exists in our system, you will receive a magic link shortly."
+}
+```
+
+<Warning>
+  For security reasons, the API returns a success message whether or not the email exists in the system. This prevents email enumeration attacks.
+</Warning>
+
+## Email Delivery
+
+Magic link emails are sent using the Swoosh email library. The sender configuration can be customized in your email sender module.
+
+Example email template structure:
+
+```elixir
+defp body(params) do
+  url = url(~p"/auth/user/magic_link/#{params[:token]}")
+
+  """
+  <p>Click this link to sign in to your account:</p>
+  <p><a href="#{url}">Sign In</a></p>
+  <p>This link will expire in 10 minutes.</p>
+  """
+end
+```
+
+### Customizing Email Content
+
+To customize the magic link email, create a sender module:
+
+```elixir
+defmodule AshCoffee.Accounts.User.Senders.SendMagicLinkEmail do
+  use AshAuthentication.Sender
+  use AshCoffeeWeb, :verified_routes
+  import Swoosh.Email
+  alias AshCoffee.Mailer
+
+  @impl true
+  def send(user, token, _) do
+    new()
+    |> from({"Ash Coffee", "noreply@ashcoffee.dev"})
+    |> to(to_string(user.email))
+    |> subject("Your sign-in link for Ash Coffee")
+    |> html_body(body(token: token, email: user.email))
+    |> Mailer.deliver!()
+  end
+
+  defp body(params) do
+    url = url(~p"/auth/user/magic_link/#{params[:token]}")
+
+    """
+    <h1>Sign in to Ash Coffee</h1>
+    <p>Hi #{params[:email]},</p>
+    <p>Click the button below to sign in to your account:</p>
+    <p><a href="#{url}" style="background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">Sign In</a></p>
+    <p>Or copy and paste this link into your browser:</p>
+    <p>#{url}</p>
+    <p>This link will expire in 10 minutes and can only be used once.</p>
+    <p>If you didn't request this email, you can safely ignore it.</p>
+    """
+  end
+end
+```
+
+## Using the Magic Link
+
+When a user clicks the magic link, they're redirected to:
+
+```
+https://api.ashcoffee.dev/auth/user/magic_link/:token
+```
+
+The API validates the token and:
+
+1. Verifies the token hasn't expired
+2. Verifies the token hasn't been used
+3. Finds the associated user
+4. Automatically confirms the user's email (if not already confirmed)
+5. Generates a JWT token
+6. Redirects to the application with the token
+
+### Browser Flow
+
+For browser-based applications, the token is typically stored in the session:
+
+```elixir
+def success(conn, activity, user, _token) do
+  return_to = get_session(conn, :return_to) || ~p"/"
+
+  message =
+    case activity do
+      {:magic_link, :sign_in} -> "You are now signed in"
+      _ -> "You are now signed in"
+    end
+
+  conn
+  |> delete_session(:return_to)
+  |> store_in_session(user)
+  |> assign(:current_user, user)
+  |> put_flash(:info, message)
+  |> redirect(to: return_to)
+end
+```
+
+### API Flow
+
+For API clients (mobile apps, SPAs), handle the redirect to extract the token:
+
+```javascript
+// After user clicks magic link, they're redirected to:
+// https://yourapp.com/auth/callback?token=JWT_TOKEN
+
+const urlParams = new URLSearchParams(window.location.search);
+const token = urlParams.get('token');
+
+if (token) {
+  // Store token for subsequent requests
+  localStorage.setItem('authToken', token);
+  
+  // Redirect to app
+  window.location.href = '/dashboard';
+}
+```
+
+## Link Expiration and Security
+
+### Token Expiration
+
+Magic link tokens have a limited lifetime (typically 10 minutes):
+
+```elixir
+attribute :expires_at, :utc_datetime do
+  allow_nil? false
+  public? true
+end
+```
+
+Expired tokens are automatically rejected:
+
+```json
+{
+  "errors": [{
+    "code": "invalid_token",
+    "title": "Invalid Token",
+    "detail": "The magic link has expired. Please request a new one."
+  }]
+}
+```
+
+### Single Use
+
+Each magic link can only be used once. After successful authentication, the token is marked as used or revoked.
+
+### Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Token Generation">
+    - Uses cryptographically secure random token generation
+    - Tokens are long and unpredictable (preventing brute force)
+    - Each token is unique and tied to a specific user
+  </Accordion>
+  
+  <Accordion title="Transport Security">
+    - Tokens are sent over HTTPS only
+    - Tokens are marked as `sensitive? true` in logs
+    - Email delivery uses secure SMTP connections
+  </Accordion>
+  
+  <Accordion title="Validation">
+    - Token presence is verified in database
+    - Expiration is checked on every request
+    - User existence is verified
+    - Single-use enforcement prevents replay attacks
+  </Accordion>
+</AccordionGroup>
+
+## Testing Magic Links in Development
+
+During development, you can preview magic link emails in the Swoosh mailbox:
+
+```elixir
+# In config/dev.exs
+config :ash_coffee, AshCoffee.Mailer,
+  adapter: Swoosh.Adapters.Local
+```
+
+Access the mailbox at:
+
+```
+http://localhost:4000/dev/mailbox
+```
+
+Click the magic link directly from the mailbox preview to test the flow.
+
+## Advantages of Magic Links
+
+<CardGroup cols={2}>
+  <Card title="No Password Required" icon="key-skeleton">
+    Users don't need to create or remember passwords
+  </Card>
+  
+  <Card title="Enhanced Security" icon="shield-check">
+    Eliminates password-related vulnerabilities like weak passwords or reuse
+  </Card>
+  
+  <Card title="Simplified UX" icon="sparkles">
+    Faster sign-in flow with fewer steps
+  </Card>
+  
+  <Card title="Auto Confirmation" icon="circle-check">
+    Email is automatically confirmed on first use
+  </Card>
+</CardGroup>
+
+## Limitations
+
+<Warning>
+  - Users must have access to their email to sign in every time
+  - Requires reliable email delivery
+  - Not suitable for offline authentication
+  - Depends on email provider's deliverability
+</Warning>
+
+<Note>
+  For returning users who want persistent sessions, consider combining magic links with [Remember Me tokens](/authentication/tokens#remember-me-tokens) for a balance of security and convenience.
+</Note>
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Invalid or Expired Token">
+    ```json
+    {
+      "errors": [{
+        "code": "invalid_token",
+        "title": "Invalid Token",
+        "detail": "The magic link is invalid or has expired."
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+    
+    Solution: Request a new magic link
+  </Accordion>
+  
+  <Accordion title="Token Already Used">
+    ```json
+    {
+      "errors": [{
+        "code": "token_used",
+        "title": "Token Already Used",
+        "detail": "This magic link has already been used."
+      }]
+    }
+    ```
+    Status: `401 Unauthorized`
+    
+    Solution: Request a new magic link
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Token Management" icon="shield" href="/authentication/tokens">
+    Learn about JWT tokens and session management
+  </Card>
+  
+  <Card title="Email Confirmation" icon="envelope-circle-check" href="/authentication/email-confirmation">
+    Understand email confirmation flows
+  </Card>
+</CardGroup>

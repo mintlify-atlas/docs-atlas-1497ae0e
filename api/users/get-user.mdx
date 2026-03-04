@@ -1,0 +1,107 @@
+---
+title: 'Get user'
+api: 'GET /users/{id}'
+---
+
+Retrieve information about a specific user by their ID.
+
+<Info>
+  This endpoint requires authentication. Include a valid Bearer token in the Authorization header.
+</Info>
+
+## Path parameters
+
+<ParamField path="path.id" type="string" required>
+  The unique identifier (UUID) of the user to retrieve.
+</ParamField>
+
+## Headers
+
+<ParamField path="header.Authorization" type="string" required>
+  Bearer token for authentication. Format: `Bearer <token>`
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="object">
+  <Expandable title="properties">
+    <ResponseField name="id" type="string" required>
+      The unique identifier (UUID) of the user.
+    </ResponseField>
+    <ResponseField name="email" type="string" required>
+      The user's email address.
+    </ResponseField>
+    <ResponseField name="confirmed_at" type="string">
+      Timestamp when the user's email was confirmed (ISO 8601 format). Null if not yet confirmed.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl --request GET \
+  --url https://api.ashcoffee.com/users/550e8400-e29b-41d4-a716-446655440000 \
+  --header 'Authorization: Bearer YOUR_TOKEN_HERE'
+```
+
+```javascript JavaScript
+fetch('https://api.ashcoffee.com/users/550e8400-e29b-41d4-a716-446655440000', {
+  method: 'GET',
+  headers: {
+    'Authorization': 'Bearer YOUR_TOKEN_HERE'
+  }
+})
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+
+```python Python
+import requests
+
+url = "https://api.ashcoffee.com/users/550e8400-e29b-41d4-a716-446655440000"
+headers = {
+    "Authorization": "Bearer YOUR_TOKEN_HERE"
+}
+
+response = requests.get(url, headers=headers)
+print(response.json())
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Success
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "confirmed_at": "2024-03-04T10:30:00.000000Z"
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "errors": [
+    {
+      "code": "unauthorized",
+      "message": "Authentication required"
+    }
+  ]
+}
+```
+
+```json 404 Not Found
+{
+  "errors": [
+    {
+      "code": "not_found",
+      "message": "User not found"
+    }
+  ]
+}
+```
+
+</ResponseExample>
