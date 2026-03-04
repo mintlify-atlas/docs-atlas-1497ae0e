@@ -64,6 +64,12 @@
         "tab": "API Reference",
         "groups": [
           {
+            "group": "Getting Started",
+            "pages": [
+              "api/setup"
+            ]
+          },
+          {
             "group": "Authentication",
             "pages": [
               "api/auth/register",

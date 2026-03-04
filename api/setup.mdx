@@ -1,0 +1,135 @@
+---
+title: API setup required
+description: Configure AshJsonApi to enable REST API endpoints
+---
+
+<Warning>
+**Important**: The JSON:API endpoints documented in this section require additional configuration before they will work. By default, the Ash Coffee application uses Phoenix LiveView for browser-based authentication, not REST API endpoints.
+</Warning>
+
+## Current State
+
+Out of the box, the Ash Coffee application provides:
+- ✅ Phoenix LiveView web interface at `http://localhost:4000`
+- ✅ Browser-based authentication routes (`/auth`, `/register`, `/reset`)
+- ✅ Ash resources (User, Token) with authentication logic
+- ❌ **JSON:API REST endpoints are NOT enabled by default**
+
+## Enabling JSON:API Endpoints
+
+To enable the REST API endpoints documented in this section, you need to configure AshJsonApi extensions on your resources and register them with the router.
+
+### Step 1: Add JSON:API Extension to Resources
+
+Update `lib/ash_coffee/accounts/user.ex` to include the AshJsonApi extension:
+
+```elixir
+defmodule AshCoffee.Accounts.User do
+  use Ash.Resource,
+    otp_app: :ash_coffee,
+    domain: AshCoffee.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    authorizers: [Ash.Policy.Authorizer],
+    extensions: [AshAuthentication, AshJsonApi]  # Add AshJsonApi here
+
+  # Add JSON:API configuration
+  json_api do
+    type "user"
+    
+    routes do
+      base "/users"
+      
+      # Enable specific endpoints
+      get :read
+      index :read
+      post :register_with_password, route: "/register"
+      patch :change_password, route: "/:id/change-password"
+    end
+  end
+
+  # ... rest of your resource configuration
+end
+```
+
+Similarly, update `lib/ash_coffee/accounts/token.ex` if you want to expose token endpoints.
+
+### Step 2: Register Domain in JSON:API Router
+
+Update `lib/ash_coffee_web/ash_json_api_router.ex` to include your domain:
+
+```elixir
+defmodule AshCoffeeWeb.AshJsonApiRouter do
+  use AshJsonApi.Router,
+    domains: [AshCoffee.Accounts],  # Add your domain here
+    open_api: "/open_api"
+end
+```
+
+### Step 3: Verify Configuration
+
+After making these changes, restart your server and verify the API is available:
+
+```bash
+# Check OpenAPI documentation
+curl http://localhost:4000/api/json/open_api
+
+# Test a simple endpoint
+curl http://localhost:4000/api/json/users
+```
+
+## Why This Configuration is Needed
+
+AshJsonApi is a separate extension that automatically generates REST API endpoints from your Ash resources. The base Ash Coffee application includes:
+
+1. **Ash Resources** - The data layer and business logic (User, Token)
+2. **AshAuthentication** - Authentication strategies and token management
+3. **Phoenix LiveView** - Web UI for browser-based interaction
+
+To add a REST API, you need:
+
+4. **AshJsonApi Extension** - Converts Ash actions into JSON:API endpoints
+5. **Router Configuration** - Registers domains to expose endpoints
+
+This separation allows you to choose whether you want a web-only app, API-only app, or both.
+
+## Alternative: Browser-Based Authentication
+
+If you don't need REST API endpoints and prefer browser-based authentication, you can use the existing Phoenix LiveView routes:
+
+- **Register**: Visit `http://localhost:4000/register`
+- **Sign In**: Visit `http://localhost:4000/auth/sign_in`
+- **Password Reset**: Visit `http://localhost:4000/reset`
+- **Sign Out**: Click the sign-out button in the UI
+
+These routes are already configured and work out of the box.
+
+## Documentation Scope
+
+The API reference pages in this documentation describe the JSON:API endpoints **after** you've completed the configuration above. They document:
+
+- Request/response formats following JSON:API specification
+- Available actions and their parameters
+- Authentication using JWT bearer tokens
+- Error responses and status codes
+
+Think of this documentation as a reference for the API you'll have once AshJsonApi is properly configured.
+
+## Learn More
+
+<CardGroup cols={2}>
+  <Card title="AshJsonApi Documentation" icon="book" href="https://hexdocs.pm/ash_json_api">
+    Official guide for configuring AshJsonApi
+  </Card>
+  
+  <Card title="Ash Resources" icon="cube" href="/concepts/resources-and-domains">
+    Understand Ash resources and domains
+  </Card>
+  
+  <Card title="Actions" icon="bolt" href="/concepts/actions">
+    Learn about Ash actions
+  </Card>
+  
+  <Card title="Development Setup" icon="wrench" href="/guides/development-setup">
+    Set up your development environment
+  </Card>
+</CardGroup>

@@ -3,6 +3,10 @@ title: Sign out
 description: Revoke user authentication and invalidate tokens
 ---
 
+<Warning>
+**Configuration Required**: This endpoint requires [AshJsonApi setup](/api/setup) before it will work. By default, Ash Coffee uses browser-based authentication.
+</Warning>
+
 ## Endpoint
 
 ```
@@ -11,9 +15,6 @@ POST /api/json/sign-out
 
 Sign out the current user by revoking their authentication token. This invalidates the JWT token and prevents it from being used for future requests.
 
-<Warning>
-After signing out, the token will no longer be valid for any API requests. Users must sign in again to obtain a new token.
-</Warning>
 
 ## Request
 
