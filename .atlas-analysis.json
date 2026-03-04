@@ -1,0 +1,103 @@
+{
+  "projectType": "api-service",
+  "projectName": "Ash Coffee API",
+  "projectDescription": "A Phoenix-based authentication API built with the Ash Framework, featuring user management, JWT tokens, and JSON:API endpoints.",
+  "theme": "aspen",
+  "primaryColor": "#6F4E37",
+  "lightColor": "#A0826D",
+  "darkColor": "#4A3326",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/ash-framework",
+              "concepts/resources-and-domains",
+              "concepts/actions"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "authentication/overview",
+              "authentication/password-strategy",
+              "authentication/magic-links",
+              "authentication/tokens",
+              "authentication/email-confirmation"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/making-requests",
+              "guides/error-handling",
+              "guides/pagination",
+              "guides/development-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Authentication",
+            "pages": [
+              "api/auth/register",
+              "api/auth/sign-in",
+              "api/auth/sign-out",
+              "api/auth/password-reset",
+              "api/auth/magic-link"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/get-user",
+              "api/users/change-password"
+            ]
+          },
+          {
+            "group": "Responses",
+            "pages": [
+              "api/responses/errors",
+              "api/responses/success"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "User authentication with multiple strategies (password, magic links, remember me)",
+    "Email confirmation workflow for new user registrations",
+    "Password reset functionality with secure tokens",
+    "JWT-based token authentication",
+    "JSON:API compliant REST endpoints",
+    "OpenAPI/Swagger documentation",
+    "Built on Ash Framework for declarative resource management",
+    "PostgreSQL data persistence with AshPostgres"
+  ],
+  "publicApiSurface": [
+    "POST /api/json/auth/register - Register new user",
+    "POST /api/json/auth/sign-in - Sign in with password",
+    "POST /api/json/auth/sign-out - Sign out current user",
+    "POST /api/json/auth/password-reset - Request password reset",
+    "POST /api/json/auth/magic-link - Request magic link",
+    "GET /api/json/users/:id - Get user by ID",
+    "PATCH /api/json/users/:id/change-password - Change user password",
+    "AshCoffee.Accounts.User - User resource with authentication",
+    "AshCoffee.Accounts.Token - Token resource for authentication"
+  ]
+}
